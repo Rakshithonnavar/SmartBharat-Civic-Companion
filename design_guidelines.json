@@ -1,0 +1,116 @@
+{
+  "project_name": "Smart Bharat / CivicMate",
+  "theme_archetype": "Hybrid: Swiss & High-Contrast (Layout) + Organic & Earthy (Colors)",
+  "core_principles": [
+    "Trust-Inspiring but Modern: Avoid bureaucratic boredom using asymmetric layouts and generous spacing.",
+    "Indian Nuance: Tasteful integration of Saffron, White, and Green without being overwhelming or tacky.",
+    "Progressive Disclosure: Hide complexity. Use 'I Need To' task-based navigation.",
+    "AI as a Partner: Chat companion should feel native, not like a bolted-on widget."
+  ],
+  "typography": {
+    "font_families": {
+      "heading": "'Cabinet Grotesk', sans-serif",
+      "body": "'Satoshi', sans-serif",
+      "mono": "'JetBrains Mono', monospace"
+    },
+    "scales": {
+      "h1": "text-5xl md:text-6xl lg:text-7xl tracking-tighter leading-[1.1] font-black",
+      "h2": "text-3xl sm:text-4xl tracking-tight leading-tight font-bold",
+      "h3": "text-2xl sm:text-3xl tracking-tight font-bold",
+      "h4": "text-lg sm:text-xl tracking-tight font-semibold",
+      "body": "text-base leading-relaxed text-gray-700",
+      "small": "text-sm uppercase tracking-[0.2em] font-medium"
+    }
+  },
+  "color_palette": {
+    "background": {
+      "default": "#FAF9F6",
+      "surface": "#FFFFFF",
+      "dark_strip": "#0B132B"
+    },
+    "text": {
+      "primary": "#0B132B",
+      "secondary": "#4B5563",
+      "inverse": "#FFFFFF",
+      "accent": "#E05D36"
+    },
+    "brand": {
+      "primary_navy": "#0B132B",
+      "accent_saffron": "#E05D36",
+      "accent_green": "#1C7C54",
+      "ai_highlight": "#3A506B"
+    },
+    "state": {
+      "success": "#1C7C54",
+      "warning": "#F59E0B",
+      "error": "#DC2626",
+      "border": "#E5E7EB"
+    }
+  },
+  "layout_spacing": {
+    "philosophy": "Generous Spacing (p-8 to p-16). Avoid standard Bootstrap columns.",
+    "grid_bento": "grid-cols-1 md:grid-cols-12 gap-6 lg:gap-8. Mix spans (e.g., col-span-8 and col-span-4) to create tension and asymmetry.",
+    "container": "max-w-7xl mx-auto px-6 lg:px-12",
+    "corners": "rounded-2xl for major cards, rounded-full for chips and buttons."
+  },
+  "surface_styles": {
+    "cards": "bg-white border border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] rounded-2xl p-6 md:p-8 hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all duration-300",
+    "glassmorphism": "bg-white/80 backdrop-blur-xl border-b border-white/20 shadow-sm",
+    "inputs": "bg-gray-50 border-gray-200 focus:border-[#E05D36] focus:ring-1 focus:ring-[#E05D36] rounded-xl"
+  },
+  "assets_and_media": {
+    "icons_library": "lucide-react",
+    "images": {
+      "hero_background": {
+        "url": "https://images.pexels.com/photos/17546270/pexels-photo-17546270.jpeg",
+        "description": "Vibrant geometric architecture mimicking abstract saffron/green tones, used subtly with low opacity or as a masking layer on the hero."
+      },
+      "testimonial_citizens": [
+        "https://images.unsplash.com/photo-1531339413195-cc6c17163974?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2ODh8MHwxfHNlYXJjaHw0fHxpbmRpYW4lMjBjaXRpemVuJTIwcG9ydHJhaXQlMjBzbWlsaW5nfGVufDB8fHx8MTc4MzQwNjgyMnww&ixlib=rb-4.1.0&q=85",
+        "https://images.unsplash.com/photo-1749700332031-cf99864959ea?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2ODh8MHwxfHNlYXJjaHwxfHxpbmRpYW4lMjBjaXRpemVuJTIwcG9ydHJhaXQlMjBzbWlsaW5nfGVufDB8fHx8MTc4MzQwNjgyMnww&ixlib=rb-4.1.0&q=85"
+      ],
+      "monument_texture": {
+        "url": "https://images.pexels.com/photos/19883686/pexels-photo-19883686.jpeg",
+        "description": "Rashtrapati Bhavan view, used for the footer or statistics counter section background with a heavy #0B132B navy overlay (bg-[#0B132B]/90)."
+      }
+    }
+  },
+  "component_specifics": {
+    "header": {
+      "style": "Glassmorphism sticky header (z-50). Includes English/Hindi Language Toggle prominently. Asymmetric logo placement."
+    },
+    "hero_section": {
+      "layout": "Left-aligned heavy typography. H1 using Cabinet Grotesk. Right side uses a Bento Grid overlapping layout featuring 'AI Chat' and 'Complaint Tracker' floating cards.",
+      "background": "Warm linen background (#FAF9F6) with subtle grainy noise texture."
+    },
+    "ai_chat_companion": {
+      "container": "Standalone page or split-screen dashboard layout.",
+      "user_bubble": "bg-[#0B132B] text-white rounded-2xl rounded-tr-sm p-4 text-sm",
+      "ai_bubble": "bg-white border border-gray-100 shadow-sm rounded-2xl rounded-tl-sm p-4 text-sm",
+      "chips": "Quick-prompt chips for 'Apply Aadhaar', 'Track Complaint' etc. rounded-full border border-gray-200 text-gray-600 hover:border-[#E05D36] hover:text-[#E05D36] text-xs py-2 px-4 transition-colors"
+    },
+    "complaint_submission": {
+      "form": "Progressive disclosure form. Use Shadcn forms. Clear steps.",
+      "tracker_timeline": "Vertical stepper layout using Emerald Green (#1C7C54) for completed steps and Saffron (#E05D36) for 'In Progress'. Gray for pending. 1px solid connecting lines."
+    },
+    "service_finder": {
+      "ui": "'Who Are You?' profile card (Age, Occupation, State). Results displayed in a dense grid of cards (Swiss styling, sharp lines, subtle hover lift)."
+    },
+    "document_guidance": {
+      "ui": "Checklist style layout with Lucide icons. Left aligned, generous spacing between list items."
+    },
+    "statistics_counter": {
+      "ui": "Dark mode strip. bg-[#0B132B] text-white. Massive typography for numbers (text-5xl or 6xl). Monospace font for digits (JetBrains Mono) for a 'live data' feel."
+    }
+  },
+  "instructions_to_main_agent": [
+    "CRITICAL: Do not use Inter, Roboto, or standard Sans. Import fonts via Fontshare CDN in index.html: <link href=\"https://api.fontshare.com/v2/css?f[]=cabinet-grotesk@800,500,700,900&f[]=satoshi@900,700,500,400&display=swap\" rel=\"stylesheet\">",
+    "Configure Tailwind theme to map 'font-heading' to Cabinet Grotesk and 'font-sans' to Satoshi.",
+    "Use standard HTML/Tailwind for Landing page sections to achieve bento grid asymmetry. Do not force Shadcn 'Card' into landing page layouts where flexibility is needed.",
+    "For all interactive elements (buttons, inputs, language toggles, chat send, tabs), you MUST add data-testid attributes (e.g., data-testid='lang-toggle-btn').",
+    "Never use generic purple/teal gradients. Stick strictly to the Saffron/Navy/Green/Linen palette defined.",
+    "Forms and complex state components MUST use Shadcn (Form, Input, Select, Dialog). Overwrite default Shadcn radius to match rounded-xl or rounded-2xl where necessary.",
+    "Add 'framer-motion' (yarn add framer-motion) for micro-animations: hover lift on service cards, staggered fade-in for chat bubbles, smooth page transitions.",
+    "Implement the Language Toggle logic to show immediate structural capability (mock translate primary headings to Hindi to impress judges)."
+  ]
+}
