@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Send, Sparkles, Loader2, Mic, MicOff, Volume2, VolumeX } from "lucide-react";
 import { useLang } from "@/context/LanguageContext";
 import { api } from "@/lib/api";
+import { useColdStartNotice } from "@/hooks/useColdStartNotice";
 
 const QUICK_PROMPTS_EN = [
   "How do I apply for Aadhaar?",
@@ -43,6 +44,7 @@ const ChatCompanion = () => {
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const showColdStart = useColdStartNotice(loading);
   const [listening, setListening] = useState(false);
   const [ttsOn, setTtsOn] = useState(false);
   const [speaking, setSpeaking] = useState(false);
@@ -255,12 +257,19 @@ const ChatCompanion = () => {
           ))}
         </AnimatePresence>
         {loading && (
-          <div className="flex justify-start">
+          <div className="flex flex-col items-start gap-1.5">
             <div className="rounded-2xl rounded-tl-sm bg-linen border border-navy/5 px-4 py-3">
               <span className="dot" />
               <span className="dot" />
               <span className="dot" />
             </div>
+            {showColdStart && (
+              <div className="text-xs text-navy/50 px-1" data-testid="cold-start-notice">
+                {lang === "hi"
+                  ? "सर्वर को जगाया जा रहा है, पहली बार में एक मिनट तक लग सकता है…"
+                  : "Waking up the server — this can take up to a minute on first use…"}
+              </div>
+            )}
           </div>
         )}
         <div ref={bottomRef} />
