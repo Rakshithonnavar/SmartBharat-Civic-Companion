@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { CheckCircle2, Clock, AlertCircle, Loader2, Search, Sparkles } from "lucide-react";
 import { useLang } from "@/context/LanguageContext";
 import { api } from "@/lib/api";
+import { useColdStartNotice } from "@/hooks/useColdStartNotice";
 
 const STATUSES = ["Submitted", "Under Review", "In Progress", "Resolved"];
 
@@ -87,6 +88,7 @@ const ComplaintTracker = () => {
     description: "",
   });
   const [submitting, setSubmitting] = useState(false);
+  const showColdStart = useColdStartNotice(submitting);
   const [submitted, setSubmitted] = useState(null);
 
   const [trackId, setTrackId] = useState("");
@@ -259,6 +261,13 @@ const ComplaintTracker = () => {
               {submitting ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
               {lang === "hi" ? "एआई से दर्ज करें" : "Submit with AI triage"}
             </button>
+            {showColdStart && (
+              <p className="text-xs text-navy/40" data-testid="cold-start-notice">
+                {lang === "hi"
+                  ? "सर्वर को जगाया जा रहा है, पहली बार में एक मिनट तक लग सकता है…"
+                  : "Waking up the server — this can take up to a minute on first use…"}
+              </p>
+            )}
           </form>
 
           <div className="lg:col-span-5">
