@@ -105,9 +105,27 @@ const dict = {
 };
 
 export const LanguageProvider = ({ children }) => {
-  const [lang, setLang] = useState("en");
+  // Load persisted language from localStorage, fallback to "en"
+  const [lang, setLang] = useState(() => {
+    if (typeof window === "undefined") return "en";
+    return localStorage.getItem("smartbharat_lang") || "en";
+  });
+
+  // Persist language choice whenever it changes
+  const handleSetLang = (newLang) => {
+    setLang(newLang);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("smartbharat_lang", newLang);
+    }
+  };
+
   const value = useMemo(
-    () => ({ lang, setLang, t: dict[lang], toggle: () => setLang((l) => (l === "en" ? "hi" : "en")) }),
+    () => ({
+      lang,
+      setLang: handleSetLang,
+      t: dict[lang],
+      toggle: () => handleSetLang(lang === "en" ? "hi" : "en"),
+    }),
     [lang]
   );
   return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;
