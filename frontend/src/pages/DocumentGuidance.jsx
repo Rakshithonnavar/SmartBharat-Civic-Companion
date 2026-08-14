@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { FileCheck2, Loader2, MapPin, Clock, Sparkles, CheckCircle2, Lightbulb } from "lucide-react";
 import { useLang } from "@/context/LanguageContext";
 import { api } from "@/lib/api";
+import { useColdStartNotice } from "@/hooks/useColdStartNotice";
 
 const COMMON = [
   "Aadhaar Card",
@@ -21,6 +22,7 @@ const DocumentGuidance = () => {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
+  const showColdStart = useColdStartNotice(loading);
 
   const fetchGuidance = async (svc) => {
     const value = (svc ?? service).trim();
@@ -103,6 +105,13 @@ const DocumentGuidance = () => {
         <div className="rounded-2xl bg-white border border-dashed border-navy/15 p-10 text-center text-sm text-navy/50">
           <Loader2 size={22} className="mx-auto mb-3 animate-spin text-saffron" />
           {lang === "hi" ? "एआई आपके लिए चेकलिस्ट तैयार कर रहा है…" : "Gemini is preparing your checklist…"}
+          {showColdStart && (
+            <div className="mt-2 text-xs text-navy/40" data-testid="cold-start-notice">
+              {lang === "hi"
+                ? "सर्वर को जगाया जा रहा है, पहली बार में एक मिनट तक लग सकता है…"
+                : "Waking up the server — this can take up to a minute on first use…"}
+            </div>
+          )}
         </div>
       )}
 
