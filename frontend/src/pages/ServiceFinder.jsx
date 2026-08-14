@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { Compass, Loader2, ExternalLink, Sparkles } from "lucide-react";
 import { useLang } from "@/context/LanguageContext";
 import { api } from "@/lib/api";
+import { useColdStartNotice } from "@/hooks/useColdStartNotice";
 
 const STATES = [
   "Andhra Pradesh", "Assam", "Bihar", "Delhi", "Gujarat", "Haryana",
@@ -21,6 +22,7 @@ const ServiceFinder = () => {
     needs: "",
   });
   const [loading, setLoading] = useState(false);
+  const showColdStart = useColdStartNotice(loading);
   const [services, setServices] = useState([]);
   const [error, setError] = useState("");
 
@@ -154,6 +156,13 @@ const ServiceFinder = () => {
               {lang === "hi"
                 ? "एआई आपके लिए सर्वोत्तम योजनाएँ चुन रहा है…"
                 : "Gemini is curating the best schemes for you…"}
+              {showColdStart && (
+                <div className="mt-2 text-xs text-navy/40" data-testid="cold-start-notice">
+                  {lang === "hi"
+                    ? "सर्वर को जगाया जा रहा है, पहली बार में एक मिनट तक लग सकता है…"
+                    : "Waking up the server — this can take up to a minute on first use…"}
+                </div>
+              )}
             </div>
           )}
           {!loading && services.length === 0 && !error && (
