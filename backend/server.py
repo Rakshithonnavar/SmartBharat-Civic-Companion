@@ -11,6 +11,7 @@ import os
 import json
 import logging
 import asyncio
+import time
 import uuid
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
@@ -18,6 +19,7 @@ from typing import List, Optional, Literal
 from datetime import datetime, timezone
 
 import google.generativeai as genai
+from google.api_core import exceptions as google_exceptions
 
 
 # ----------------------------------------------------------------------
@@ -159,6 +161,45 @@ def _ticket_id() -> str:
     return "SB-" + uuid.uuid4().hex[:8].upper()
 
 
+# ----------------------------------------------------------------------
+# Lightweight in-memory TTL cache
+# ----------------------------------------------------------------------
+# Reduces repeat Gemini calls for effectively-static lookups (document
+# checklists, scheme recommendations for the same profile). Not shared
+# across server instances/restarts — fine for a single free-tier dyno.
+_ai_cache: dict = {}
+
+
+def _cache_get(namespace: str, key: str):
+    entry = _ai_cache.get((namespace, key))
+    if not entry:
+        return None
+    value, expires_at = entry
+    if time.time() > expires_at:
+        _ai_cache.pop((namespace, key), None)
+        return None
+    return value
+
+
+def _cache_set(namespace: str, key: str, value, ttl_seconds: int):
+    _ai_cache[(namespace, key)] = (value, time.time() + ttl_seconds)
+
+
+def _raise_ai_error(e: Exception):
+    """Translate a Gemini/SDK exception into a client-safe HTTPException."""
+    if isinstance(e, google_exceptions.ResourceExhausted):
+        raise HTTPException(
+            status_code=429,
+            detail="CivicMate's AI is getting a lot of requests right now (free-tier limit reached). Please try again in about a minute.",
+        )
+    if isinstance(e, (google_exceptions.PermissionDenied, google_exceptions.Unauthenticated)):
+        raise HTTPException(
+            status_code=502,
+            detail="AI service configuration issue. Please contact the site admin.",
+        )
+    raise HTTPException(status_code=500, detail="AI service is temporarily unavailable. Please try again.")
+
+
 async def _gemini_generate(
     prompt: str,
     system: str = CIVIC_SYSTEM_PROMPT,
@@ -239,7 +280,7 @@ async def ai_chat(req: ChatRequest):
         return ChatResponse(reply=text.strip() or "Sorry, I could not generate a reply.")
     except Exception as e:
         logger.exception("gemini chat error")
-        raise HTTPException(status_code=500, detail=f"AI error: {str(e)}")
+        _raise_ai_error(e)
 
 
 @api_router.post("/ai/chat/stream")
@@ -260,8 +301,11 @@ async def ai_chat_stream(req: ChatRequest):
             async for token in _gemini_stream(prompt):
                 yield f"data: {json.dumps({'delta': token})}\n\n"
             yield f"data: {json.dumps({'done': True})}\n\n"
+        except google_exceptions.ResourceExhausted:
+            yield f"data: {json.dumps({'error': 'CivicMate is busy right now (rate limit). Please try again in about a minute.'})}\n\n"
         except Exception as e:
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            logger.exception("gemini stream error")
+            yield f"data: {json.dumps({'error': 'Something went wrong. Please try again.'})}\n\n"
 
     return StreamingResponse(
         event_gen(),
@@ -274,6 +318,15 @@ async def ai_chat_stream(req: ChatRequest):
 @api_router.post("/ai/recommend-services", response_model=ServiceRecommendResponse)
 async def recommend_services(req: ServiceRecommendRequest):
     lang = "Hindi (Devanagari)" if req.language == "hi" else "English"
+
+    cache_key = "|".join([
+        str(req.age), (req.occupation or "").strip().lower(), (req.state or "").strip().lower(),
+        str(req.income or ""), (req.needs or "").strip().lower(), req.language,
+    ])
+    cached = _cache_get("recommend_services", cache_key)
+    if cached is not None:
+        return ServiceRecommendResponse(**cached)
+
     prompt = f"""Recommend 4-6 Indian government schemes/services suitable for this citizen.
 Return STRICT JSON with this exact shape:
 {{
@@ -300,16 +353,25 @@ All text values must be in {lang}. Only include real, well-known Indian schemes 
     try:
         raw = await _gemini_generate(prompt, json_mode=True)
         data = json.loads(raw)
+        _cache_set("recommend_services", cache_key, data, ttl_seconds=6 * 3600)
         return ServiceRecommendResponse(**data)
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception("recommend error")
-        raise HTTPException(status_code=500, detail=f"AI error: {str(e)}")
+        _raise_ai_error(e)
 
 
 # ---------------- DOCUMENT GUIDANCE ----------------
 @api_router.post("/ai/document-guidance", response_model=DocumentGuidanceResponse)
 async def document_guidance(req: DocumentGuidanceRequest):
     lang = "Hindi (Devanagari)" if req.language == "hi" else "English"
+
+    cache_key = f"{req.service.strip().lower()}::{req.language}"
+    cached = _cache_get("document_guidance", cache_key)
+    if cached is not None:
+        return DocumentGuidanceResponse(**cached)
+
     prompt = f"""Provide a document checklist and process guide for the Indian government service: "{req.service}".
 
 Return STRICT JSON:
@@ -326,10 +388,13 @@ All text values must be in {lang}. Be accurate for India. Include 5-8 documents,
     try:
         raw = await _gemini_generate(prompt, json_mode=True)
         data = json.loads(raw)
+        _cache_set("document_guidance", cache_key, data, ttl_seconds=24 * 3600)
         return DocumentGuidanceResponse(**data)
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception("doc guidance error")
-        raise HTTPException(status_code=500, detail=f"AI error: {str(e)}")
+        _raise_ai_error(e)
 
 
 # ---------------- COMPLAINTS ----------------
