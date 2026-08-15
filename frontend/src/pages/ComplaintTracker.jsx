@@ -1,9 +1,13 @@
 import React, { useState } from "react";
 import { motion } from "framer-motion";
-import { CheckCircle2, Clock, AlertCircle, Loader2, Search, Sparkles } from "lucide-react";
+import { CheckCircle2, Clock, AlertCircle, Loader2, Search, Sparkles, CloudUpload } from "lucide-react";
 import { useLang } from "@/context/LanguageContext";
 import { api } from "@/lib/api";
 import { useColdStartNotice } from "@/hooks/useColdStartNotice";
+import { useOfflineForm } from "@/hooks/useOfflineForm";
+import { useOfflineQueue } from "@/hooks/useOfflineQueue";
+import { isOfflineError } from "@/lib/networkError";
+import OfflineStatusBadge from "@/components/OfflineStatusBadge";
 
 const STATUSES = ["Submitted", "Under Review", "In Progress", "Resolved"];
 
@@ -16,6 +20,14 @@ const CATEGORIES = [
   "Street Lighting",
   "Other",
 ];
+
+const EMPTY_COMPLAINT = {
+  citizen_name: "",
+  contact: "",
+  category: CATEGORIES[0],
+  location: "",
+  description: "",
+};
 
 const StatusPill = ({ status }) => {
   const map = {
@@ -80,16 +92,25 @@ const Timeline = ({ current, entries }) => {
 const ComplaintTracker = () => {
   const { lang } = useLang();
   const [tab, setTab] = useState("submit"); // submit | track
-  const [form, setForm] = useState({
-    citizen_name: "",
-    contact: "",
-    category: CATEGORIES[0],
-    location: "",
-    description: "",
-  });
+  const [form, setForm, { restored: draftRestored, clearDraft }] = useOfflineForm(
+    "complaint_form",
+    EMPTY_COMPLAINT
+  );
   const [submitting, setSubmitting] = useState(false);
   const showColdStart = useColdStartNotice(submitting);
   const [submitted, setSubmitted] = useState(null);
+  const [queued, setQueued] = useState(false);
+
+  const { pendingCount, online, enqueue } = useOfflineQueue(
+    "complaint_submit",
+    (payload) => api.submitComplaint(payload),
+    {
+      onSuccess: (result) => {
+        setSubmitted(result);
+        setQueued(false);
+      },
+    }
+  );
 
   const [trackId, setTrackId] = useState("");
   const [tracking, setTracking] = useState(false);
@@ -100,18 +121,31 @@ const ComplaintTracker = () => {
     e.preventDefault();
     setSubmitting(true);
     setSubmitted(null);
+    setQueued(false);
     try {
       const res = await api.submitComplaint(form);
       setSubmitted(res);
-      setForm({
-        citizen_name: "",
-        contact: "",
-        category: CATEGORIES[0],
-        location: "",
-        description: "",
-      });
-    } catch (e) {
-      alert("Failed to submit — please try again.");
+      clearDraft();
+      setForm(EMPTY_COMPLAINT);
+    } catch (err) {
+      if (isOfflineError(err)) {
+        try {
+          await enqueue(form);
+          setQueued(true);
+          clearDraft();
+          setForm(EMPTY_COMPLAINT);
+        } catch {
+          alert(
+            lang === "hi"
+              ? "ऑफ़लाइन सेव भी विफल — कृपया पुनः प्रयास करें।"
+              : "Could not save this offline either — please try again."
+          );
+        }
+      } else {
+        alert(
+          lang === "hi" ? "सबमिट विफल — कृपया पुनः प्रयास करें।" : "Failed to submit — please try again."
+        );
+      }
     } finally {
       setSubmitting(false);
     }
@@ -147,6 +181,7 @@ const ComplaintTracker = () => {
             ? "एआई आपकी शिकायत को सही विभाग में भेजता है और आप पूरी टाइमलाइन देख सकते हैं।"
             : "AI triages your complaint, routes it to the right department, and gives you a live status timeline."}
         </p>
+        <OfflineStatusBadge online={online} pendingCount={pendingCount} lang={lang} />
       </div>
 
       <div className="inline-flex rounded-full bg-white border border-navy/10 p-1 mb-8">
@@ -176,6 +211,26 @@ const ComplaintTracker = () => {
             onSubmit={submit}
             className="lg:col-span-7 rounded-2xl bg-white border border-navy/5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] p-8 space-y-5"
           >
+            {draftRestored && (form.citizen_name || form.description) && (
+              <div
+                data-testid="draft-restored-notice"
+                className="flex items-center justify-between rounded-xl bg-linen border border-navy/10 px-4 py-2.5 text-xs text-navy/60"
+              >
+                <span>
+                  {lang === "hi" ? "आपका सहेजा गया ड्राफ्ट पुनर्स्थापित किया गया।" : "Restored your saved draft."}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearDraft();
+                    setForm(EMPTY_COMPLAINT);
+                  }}
+                  className="font-semibold text-saffron hover:underline"
+                >
+                  {lang === "hi" ? "साफ़ करें" : "Clear"}
+                </button>
+              </div>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <label className="block">
                 <span className="text-xs font-semibold uppercase tracking-widest text-navy/60">
@@ -306,6 +361,23 @@ const ComplaintTracker = () => {
                     ? "इस टिकट आईडी को सुरक्षित रखें। ट्रैक टैब में उपयोग करें।"
                     : "Save this ticket ID — use the Track tab to view live status."}
                 </div>
+              </motion.div>
+            ) : queued ? (
+              <motion.div
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                data-testid="submit-queued"
+                className="rounded-2xl bg-saffron/10 border border-saffron/25 p-6"
+              >
+                <div className="flex items-center gap-2 text-saffron font-semibold text-sm">
+                  <CloudUpload size={16} />
+                  {lang === "hi" ? "ऑफ़लाइन सेव किया गया" : "Saved offline"}
+                </div>
+                <p className="mt-2 text-sm text-navy/70">
+                  {lang === "hi"
+                    ? "आपकी शिकायत आपके डिवाइस पर सुरक्षित है और कनेक्शन आने पर अपने आप भेज दी जाएगी। इसी टैब पर वापस आकर टिकट आईडी देखें।"
+                    : "Your complaint is saved on this device and will submit automatically once you're back online. Come back to this tab to see the ticket ID once it goes through."}
+                </p>
               </motion.div>
             ) : (
               <div className="rounded-2xl bg-white border border-dashed border-navy/15 p-8 text-center text-sm text-navy/50">
