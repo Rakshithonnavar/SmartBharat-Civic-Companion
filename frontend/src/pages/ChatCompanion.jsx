@@ -1,9 +1,14 @@
 import React, { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, Sparkles, Loader2, Mic, MicOff, Volume2, VolumeX } from "lucide-react";
+import { Send, Sparkles, Loader2, Mic, MicOff, Volume2, VolumeX, Clock3 } from "lucide-react";
 import { useLang } from "@/context/LanguageContext";
 import { api } from "@/lib/api";
 import { useColdStartNotice } from "@/hooks/useColdStartNotice";
+import { useOfflineForm } from "@/hooks/useOfflineForm";
+import { useOfflineQueue } from "@/hooks/useOfflineQueue";
+import { isOfflineError } from "@/lib/networkError";
+import { genId } from "@/lib/offlineDb";
+import OfflineStatusBadge from "@/components/OfflineStatusBadge";
 
 const QUICK_PROMPTS_EN = [
   "How do I apply for Aadhaar?",
@@ -35,6 +40,7 @@ const ChatCompanion = () => {
   const { lang } = useLang();
   const [messages, setMessages] = useState([
     {
+      id: "welcome",
       role: "assistant",
       content:
         lang === "hi"
@@ -42,7 +48,7 @@ const ChatCompanion = () => {
           : "Namaste! I'm CivicMate. Ask me anything about Indian government services, schemes, or documents.",
     },
   ]);
-  const [input, setInput] = useState("");
+  const [input, setInput] = useOfflineForm("chat_input_draft", "");
   const [loading, setLoading] = useState(false);
   const showColdStart = useColdStartNotice(loading);
   const [listening, setListening] = useState(false);
@@ -51,6 +57,25 @@ const ChatCompanion = () => {
   const [voiceError, setVoiceError] = useState("");
   const bottomRef = useRef(null);
   const recognitionRef = useRef(null);
+
+  const { pendingCount, online, enqueue } = useOfflineQueue(
+    "chat_messages",
+    (payload) => api.chat(payload),
+    {
+      onSuccess: (result, payload, meta) => {
+        setMessages((m) => {
+          const withSent = m.map((msg) =>
+            msg.id === meta?.messageId ? { ...msg, status: "sent" } : msg
+          );
+          return [
+            ...withSent,
+            { id: genId(), role: "assistant", content: result.reply },
+          ];
+        });
+        if (ttsOn) speak(result.reply);
+      },
+    }
+  );
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -79,7 +104,7 @@ const ChatCompanion = () => {
     return () => {
       try { r.stop(); } catch (e) { /* noop */ }
     };
-  }, [lang]);
+  }, [lang, setInput]);
 
   const toggleMic = () => {
     setVoiceError("");
@@ -142,28 +167,42 @@ const ChatCompanion = () => {
     if (!msg || loading) return;
     setInput("");
     stopSpeaking();
-    const nextMsgs = [...messages, { role: "user", content: msg }];
+    const messageId = genId();
+    const nextMsgs = [...messages, { id: messageId, role: "user", content: msg, status: "sent" }];
     setMessages(nextMsgs);
     setLoading(true);
+    // Strip our local id/status fields before sending — backend only expects role/content
+    const history = nextMsgs.slice(-8).map(({ role, content }) => ({ role, content }));
+    const payload = { message: msg, language: lang, history };
     try {
-      const res = await api.chat({
-        message: msg,
-        language: lang,
-        history: nextMsgs.slice(-8),
-      });
-      setMessages((m) => [...m, { role: "assistant", content: res.reply }]);
+      const res = await api.chat(payload);
+      setMessages((m) => [...m, { id: genId(), role: "assistant", content: res.reply }]);
       if (ttsOn) speak(res.reply);
     } catch (e) {
-      setMessages((m) => [
-        ...m,
-        {
-          role: "assistant",
-          content:
-            lang === "hi"
-              ? "क्षमा करें, अभी उत्तर देने में समस्या है।"
-              : "Sorry, I couldn't reach the AI right now. Please try again.",
-        },
-      ]);
+      if (isOfflineError(e)) {
+        setMessages((m) =>
+          m.map((mm) => (mm.id === messageId ? { ...mm, status: "pending" } : mm))
+        );
+        try {
+          await enqueue(payload, { messageId });
+        } catch {
+          setMessages((m) =>
+            m.map((mm) => (mm.id === messageId ? { ...mm, status: "failed" } : mm))
+          );
+        }
+      } else {
+        setMessages((m) => [
+          ...m,
+          {
+            id: genId(),
+            role: "assistant",
+            content:
+              lang === "hi"
+                ? "क्षमा करें, अभी उत्तर देने में समस्या है।"
+                : "Sorry, I couldn't reach the AI right now. Please try again.",
+          },
+        ]);
+      }
     } finally {
       setLoading(false);
     }
@@ -203,6 +242,8 @@ const ChatCompanion = () => {
         </button>
       </div>
 
+      <OfflineStatusBadge online={online} pendingCount={pendingCount} lang={lang} />
+
       {/* Quick chips */}
       <div className="flex flex-wrap gap-2 mb-6">
         {prompts.map((p) => (
@@ -225,11 +266,11 @@ const ChatCompanion = () => {
         <AnimatePresence initial={false}>
           {messages.map((m, i) => (
             <motion.div
-              key={i}
+              key={m.id || i}
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.2 }}
-              className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
+              className={`flex flex-col ${m.role === "user" ? "items-end" : "items-start"}`}
             >
               <div
                 data-testid={`msg-${m.role}-${i}`}
@@ -253,6 +294,23 @@ const ChatCompanion = () => {
                   </button>
                 )}
               </div>
+              {m.role === "user" && m.status === "pending" && (
+                <div
+                  data-testid={`msg-pending-${i}`}
+                  className="mt-1 flex items-center gap-1 text-[10px] text-navy/40"
+                >
+                  <Clock3 size={10} />
+                  {lang === "hi" ? "ऑफ़लाइन — कनेक्शन आने पर भेजा जाएगा" : "Offline — will send once you're back online"}
+                </div>
+              )}
+              {m.role === "user" && m.status === "failed" && (
+                <div
+                  data-testid={`msg-failed-${i}`}
+                  className="mt-1 text-[10px] text-red-500"
+                >
+                  {lang === "hi" ? "सेव नहीं हो सका" : "Could not be saved"}
+                </div>
+              )}
             </motion.div>
           ))}
         </AnimatePresence>
