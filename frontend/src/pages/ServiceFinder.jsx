@@ -4,6 +4,10 @@ import { Compass, Loader2, ExternalLink, Sparkles } from "lucide-react";
 import { useLang } from "@/context/LanguageContext";
 import { api } from "@/lib/api";
 import { useColdStartNotice } from "@/hooks/useColdStartNotice";
+import { useOfflineForm } from "@/hooks/useOfflineForm";
+import { useOfflineQueue } from "@/hooks/useOfflineQueue";
+import { isOfflineError } from "@/lib/networkError";
+import OfflineStatusBadge from "@/components/OfflineStatusBadge";
 
 const STATES = [
   "Andhra Pradesh", "Assam", "Bihar", "Delhi", "Gujarat", "Haryana",
@@ -12,34 +16,67 @@ const STATES = [
   "Uttarakhand", "West Bengal", "Other",
 ];
 
+const DEFAULT_PROFILE = {
+  age: 30,
+  occupation: "Farmer",
+  state: "Maharashtra",
+  income: "Below ₹2 lakh/year",
+  needs: "",
+};
+
 const ServiceFinder = () => {
   const { lang } = useLang();
-  const [form, setForm] = useState({
-    age: 30,
-    occupation: "Farmer",
-    state: "Maharashtra",
-    income: "Below ₹2 lakh/year",
-    needs: "",
-  });
+  const [form, setForm, { restored: draftRestored, clearDraft }] = useOfflineForm(
+    "service_finder_form",
+    DEFAULT_PROFILE
+  );
   const [loading, setLoading] = useState(false);
   const showColdStart = useColdStartNotice(loading);
   const [services, setServices] = useState([]);
   const [error, setError] = useState("");
+  const [queued, setQueued] = useState(false);
+
+  const { pendingCount, online, enqueue } = useOfflineQueue(
+    "service_finder_submit",
+    (payload) => api.recommend(payload),
+    {
+      onSuccess: (result) => {
+        setServices(result.services || []);
+        setQueued(false);
+        setError("");
+      },
+    }
+  );
 
   const submit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError("");
     setServices([]);
+    setQueued(false);
+    const payload = { ...form, language: lang };
     try {
-      const res = await api.recommend({ ...form, language: lang });
+      const res = await api.recommend(payload);
       setServices(res.services || []);
     } catch (e) {
-      setError(
-        lang === "hi"
-          ? "एआई से जुड़ नहीं सका। फिर से प्रयास करें।"
-          : "Could not reach the AI. Please try again."
-      );
+      if (isOfflineError(e)) {
+        try {
+          await enqueue(payload);
+          setQueued(true);
+        } catch {
+          setError(
+            lang === "hi"
+              ? "ऑफ़लाइन सेव भी विफल — कृपया पुनः प्रयास करें।"
+              : "Could not save this offline either — please try again."
+          );
+        }
+      } else {
+        setError(
+          lang === "hi"
+            ? "एआई से जुड़ नहीं सका। फिर से प्रयास करें।"
+            : "Could not reach the AI. Please try again."
+        );
+      }
     } finally {
       setLoading(false);
     }
@@ -63,11 +100,31 @@ const ServiceFinder = () => {
         </div>
       </div>
 
+      <OfflineStatusBadge online={online} pendingCount={pendingCount} lang={lang} />
+
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         <form
           onSubmit={submit}
           className="lg:col-span-4 rounded-2xl bg-white border border-navy/5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] p-6 space-y-4 h-fit"
         >
+          {draftRestored && form.needs && (
+            <div
+              data-testid="draft-restored-notice"
+              className="flex items-center justify-between rounded-xl bg-linen border border-navy/10 px-3 py-2 text-xs text-navy/60"
+            >
+              <span>{lang === "hi" ? "ड्राफ्ट पुनर्स्थापित किया गया।" : "Restored your saved draft."}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  clearDraft();
+                  setForm(DEFAULT_PROFILE);
+                }}
+                className="font-semibold text-saffron hover:underline"
+              >
+                {lang === "hi" ? "साफ़ करें" : "Clear"}
+              </button>
+            </div>
+          )}
           <label className="block">
             <span className="text-xs font-semibold uppercase tracking-widest text-navy/60">
               {lang === "hi" ? "आयु" : "Age"}
@@ -150,6 +207,22 @@ const ServiceFinder = () => {
               {error}
             </div>
           )}
+          {queued && (
+            <div
+              data-testid="services-queued"
+              className="mb-4 rounded-2xl bg-saffron/10 border border-saffron/25 p-5 text-sm text-navy/70"
+            >
+              <div className="flex items-center gap-2 text-saffron font-semibold">
+                <Sparkles size={14} />
+                {lang === "hi" ? "ऑफ़लाइन सेव किया गया" : "Saved offline"}
+              </div>
+              <p className="mt-1.5">
+                {lang === "hi"
+                  ? "आपकी जानकारी सुरक्षित है — कनेक्शन आने पर योजनाएँ अपने आप खोजी जाएँगी।"
+                  : "Your profile is saved — we'll fetch your matched schemes automatically once you're back online."}
+              </p>
+            </div>
+          )}
           {loading && (
             <div className="rounded-2xl bg-white border border-dashed border-navy/15 p-10 text-center text-sm text-navy/50">
               <Loader2 size={22} className="mx-auto mb-3 animate-spin text-saffron" />
@@ -165,7 +238,7 @@ const ServiceFinder = () => {
               )}
             </div>
           )}
-          {!loading && services.length === 0 && !error && (
+          {!loading && !queued && services.length === 0 && !error && (
             <div className="rounded-2xl bg-white border border-dashed border-navy/15 p-10 text-center text-sm text-navy/50">
               <Compass size={22} className="mx-auto mb-3 text-navy/30" />
               {lang === "hi"
