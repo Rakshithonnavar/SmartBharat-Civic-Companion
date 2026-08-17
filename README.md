@@ -6,7 +6,7 @@
 
 **Ask any government question. File complaints in seconds. Discover schemes tailored to you. All in English or Hindi.**
 
-[![Live Demo](https://img.shields.io/badge/Live%20Demo-Try%20it%20now-E05D36?style=for-the-badge)](https://citizen-connect-46.preview.emergentagent.com)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Try%20it%20now-E05D36?style=for-the-badge)](https://smart-bharat-civic-companion-one.vercel.app/)
 [![Powered by Gemini](https://img.shields.io/badge/Powered%20by-Gemini%202.5%20Flash-1C7C54?style=for-the-badge&logo=google)](https://ai.google.dev)
 [![Hackathon](https://img.shields.io/badge/Built%20for-PromptWars%202026-0B132B?style=for-the-badge)](https://devengers.in)
 
@@ -36,7 +36,7 @@
 
 ## 🎬 Live Demo
 
-🔗 **[https://citizen-connect-46.preview.emergentagent.com](https://citizen-connect-46.preview.emergentagent.com)**
+🔗 **[https://smart-bharat-civic-companion-one.vercel.app/](https://smart-bharat-civic-companion-one.vercel.app/)**
 
 Try these in 60 seconds:
 1. **Chat** → tap the mic 🎤 → say *"How do I apply for Aadhaar?"*
