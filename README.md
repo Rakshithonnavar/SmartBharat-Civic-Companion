@@ -89,7 +89,7 @@ Try these in 60 seconds:
 | **AI** | Google Gemini 2.5 Flash via `google-generativeai` (JSON mode + streaming) |
 | **Database** | MongoDB (in-memory OK for demo; complaints persisted) |
 | **Fonts** | Cabinet Grotesk (headings), Satoshi (body), JetBrains Mono (numerals), Noto Sans Devanagari (Hindi) |
-| **Deploy** | Emergent Preview · (portable to Vercel + Railway) |
+| **Deploy** | Hosted on Vercel(frontend service) + Render(backend service) |
 
 ---
 
