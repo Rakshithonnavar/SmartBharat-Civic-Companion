@@ -46,15 +46,16 @@ const StatusPill = ({ status }) => {
 
 const Timeline = ({ current, entries }) => {
   return (
-    <ol className="mt-4 space-y-4">
+    <ol aria-label={current ? `Complaint status: ${current}` : "Complaint status timeline"} className="mt-4 space-y-4">
       {STATUSES.map((s, idx) => {
         const idxCurrent = STATUSES.indexOf(current);
         const done = idx < idxCurrent;
         const active = idx === idxCurrent;
         const entry = entries?.find((e) => e.status === s);
         return (
-          <li key={s} className="flex items-start gap-3">
+          <li key={s} aria-current={active ? "step" : undefined} className="flex items-start gap-3">
             <div
+              aria-hidden="true"
               className={`mt-0.5 h-6 w-6 rounded-full flex items-center justify-center border ${
                 done
                   ? "bg-emerald border-emerald text-white"
@@ -184,9 +185,13 @@ const ComplaintTracker = () => {
         <OfflineStatusBadge online={online} pendingCount={pendingCount} lang={lang} />
       </div>
 
-      <div className="inline-flex rounded-full bg-white border border-navy/10 p-1 mb-8">
+      <div role="tablist" aria-label={lang === "hi" ? "शिकायत टैब" : "Complaint tabs"} className="inline-flex rounded-full bg-white border border-navy/10 p-1 mb-8">
         <button
           data-testid="tab-submit"
+          role="tab"
+          id="tab-submit"
+          aria-selected={tab === "submit"}
+          aria-controls="tabpanel-submit"
           onClick={() => setTab("submit")}
           className={`px-5 py-2 rounded-full text-sm font-semibold transition-colors ${
             tab === "submit" ? "bg-navy text-white" : "text-navy/60 hover:text-navy"
@@ -196,6 +201,10 @@ const ComplaintTracker = () => {
         </button>
         <button
           data-testid="tab-track"
+          role="tab"
+          id="tab-track"
+          aria-selected={tab === "track"}
+          aria-controls="tabpanel-track"
           onClick={() => setTab("track")}
           className={`px-5 py-2 rounded-full text-sm font-semibold transition-colors ${
             tab === "track" ? "bg-navy text-white" : "text-navy/60 hover:text-navy"
@@ -206,7 +215,7 @@ const ComplaintTracker = () => {
       </div>
 
       {tab === "submit" && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <div id="tabpanel-submit" role="tabpanel" aria-labelledby="tab-submit" className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <form
             onSubmit={submit}
             className="lg:col-span-7 rounded-2xl bg-white border border-navy/5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] p-8 space-y-5"
@@ -310,14 +319,15 @@ const ComplaintTracker = () => {
             <button
               type="submit"
               disabled={submitting}
+              aria-busy={submitting}
               data-testid="submit-complaint-btn"
               className="inline-flex items-center gap-2 rounded-full bg-navy px-6 py-3 text-sm font-semibold text-white hover:bg-saffron disabled:opacity-60 transition-colors"
             >
-              {submitting ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+              {submitting ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <Sparkles size={16} aria-hidden="true" />}
               {lang === "hi" ? "एआई से दर्ज करें" : "Submit with AI triage"}
             </button>
             {showColdStart && (
-              <p className="text-xs text-navy/40" data-testid="cold-start-notice">
+              <p role="status" className="text-xs text-navy/40" data-testid="cold-start-notice">
                 {lang === "hi"
                   ? "सर्वर को जगाया जा रहा है, पहली बार में एक मिनट तक लग सकता है…"
                   : "Waking up the server — this can take up to a minute on first use…"}
@@ -325,7 +335,7 @@ const ComplaintTracker = () => {
             )}
           </form>
 
-          <div className="lg:col-span-5">
+          <div aria-live="polite" className="lg:col-span-5">
             {submitted ? (
               <motion.div
                 initial={{ opacity: 0, y: 12 }}
@@ -392,16 +402,17 @@ const ComplaintTracker = () => {
       )}
 
       {tab === "track" && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <div id="tabpanel-track" role="tabpanel" aria-labelledby="tab-track" className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <form
             onSubmit={track}
             className="lg:col-span-5 rounded-2xl bg-white border border-navy/5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] p-8"
           >
-            <div className="text-xs font-semibold uppercase tracking-widest text-navy/60 mb-2">
+            <label htmlFor="input-track-id" className="block text-xs font-semibold uppercase tracking-widest text-navy/60 mb-2">
               {lang === "hi" ? "टिकट आईडी" : "Ticket ID"}
-            </div>
+            </label>
             <div className="flex gap-2">
               <input
+                id="input-track-id"
                 data-testid="input-track-id"
                 value={trackId}
                 onChange={(e) => setTrackId(e.target.value)}
@@ -412,14 +423,15 @@ const ComplaintTracker = () => {
                 type="submit"
                 disabled={tracking || !trackId.trim()}
                 data-testid="track-btn"
+                aria-busy={tracking}
                 className="inline-flex items-center gap-2 rounded-xl bg-navy px-4 py-2.5 text-sm font-semibold text-white hover:bg-saffron disabled:opacity-50 transition-colors"
               >
-                {tracking ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+                {tracking ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Search size={14} aria-hidden="true" />}
                 {lang === "hi" ? "खोजें" : "Track"}
               </button>
             </div>
             {trackError && (
-              <div className="mt-3 text-xs text-red-600" data-testid="track-error">{trackError}</div>
+              <div role="alert" className="mt-3 text-xs text-red-600" data-testid="track-error">{trackError}</div>
             )}
           </form>
 
