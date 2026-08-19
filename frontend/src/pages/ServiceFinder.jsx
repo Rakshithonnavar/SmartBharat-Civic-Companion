@@ -85,7 +85,7 @@ const ServiceFinder = () => {
   return (
     <div className="max-w-6xl mx-auto px-6 lg:px-12 py-10">
       <div className="mb-8 flex items-center gap-3">
-        <div className="h-10 w-10 rounded-xl bg-emerald/15 text-emerald flex items-center justify-center">
+        <div aria-hidden="true" className="h-10 w-10 rounded-xl bg-emerald/15 text-emerald flex items-center justify-center">
           <Compass size={18} />
         </div>
         <div>
@@ -194,16 +194,17 @@ const ServiceFinder = () => {
             type="submit"
             disabled={loading}
             data-testid="find-schemes-btn"
+            aria-busy={loading}
             className="w-full inline-flex items-center justify-center gap-2 rounded-full bg-navy px-5 py-3 text-sm font-semibold text-white hover:bg-saffron disabled:opacity-60 transition-colors"
           >
-            {loading ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+            {loading ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <Sparkles size={16} aria-hidden="true" />}
             {lang === "hi" ? "योजनाएँ खोजें" : "Find my schemes"}
           </button>
         </form>
 
-        <div className="lg:col-span-8">
+        <div aria-live="polite" className="lg:col-span-8">
           {error && (
-            <div className="mb-4 text-sm text-red-600" data-testid="services-error">
+            <div role="alert" className="mb-4 text-sm text-red-600" data-testid="services-error">
               {error}
             </div>
           )}
@@ -213,7 +214,7 @@ const ServiceFinder = () => {
               className="mb-4 rounded-2xl bg-saffron/10 border border-saffron/25 p-5 text-sm text-navy/70"
             >
               <div className="flex items-center gap-2 text-saffron font-semibold">
-                <Sparkles size={14} />
+                <Sparkles size={14} aria-hidden="true" />
                 {lang === "hi" ? "ऑफ़लाइन सेव किया गया" : "Saved offline"}
               </div>
               <p className="mt-1.5">
@@ -225,7 +226,7 @@ const ServiceFinder = () => {
           )}
           {loading && (
             <div className="rounded-2xl bg-white border border-dashed border-navy/15 p-10 text-center text-sm text-navy/50">
-              <Loader2 size={22} className="mx-auto mb-3 animate-spin text-saffron" />
+              <Loader2 size={22} className="mx-auto mb-3 animate-spin text-saffron" aria-hidden="true" />
               {lang === "hi"
                 ? "एआई आपके लिए सर्वोत्तम योजनाएँ चुन रहा है…"
                 : "Gemini is curating the best schemes for you…"}
@@ -240,7 +241,7 @@ const ServiceFinder = () => {
           )}
           {!loading && !queued && services.length === 0 && !error && (
             <div className="rounded-2xl bg-white border border-dashed border-navy/15 p-10 text-center text-sm text-navy/50">
-              <Compass size={22} className="mx-auto mb-3 text-navy/30" />
+              <Compass size={22} className="mx-auto mb-3 text-navy/30" aria-hidden="true" />
               {lang === "hi"
                 ? "अपनी जानकारी भरें और परिणाम यहाँ दिखाई देंगे।"
                 : "Fill your profile — matched schemes will appear here."}
@@ -294,7 +295,10 @@ const ServiceFinder = () => {
                       rel="noreferrer"
                       className="mt-4 inline-flex items-center gap-1 text-xs font-semibold text-saffron hover:underline"
                     >
-                      {s.portal} <ExternalLink size={12} />
+                      {s.portal} <ExternalLink size={12} aria-hidden="true" />
+                      <span className="sr-only">
+                        {lang === "hi" ? "(नए टैब में खुलता है)" : "(opens in a new tab)"}
+                      </span>
                     </a>
                   )}
                 </motion.div>
