@@ -213,7 +213,7 @@ const ChatCompanion = () => {
   return (
     <div className="max-w-5xl mx-auto px-6 lg:px-12 py-10">
       <div className="mb-6 flex items-center gap-3">
-        <div className="h-10 w-10 rounded-xl bg-navy text-white flex items-center justify-center">
+        <div aria-hidden="true" className="h-10 w-10 rounded-xl bg-navy text-white flex items-center justify-center">
           <Sparkles size={18} className="text-saffron" />
         </div>
         <div className="flex-1">
@@ -230,6 +230,7 @@ const ChatCompanion = () => {
         <button
           data-testid="tts-toggle-btn"
           onClick={toggleTts}
+          aria-pressed={ttsOn}
           title={ttsOn ? "Turn voice output off" : "Turn voice output on"}
           className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
             ttsOn
@@ -237,7 +238,7 @@ const ChatCompanion = () => {
               : "bg-white border-navy/15 text-navy/70 hover:border-saffron hover:text-saffron"
           }`}
         >
-          {ttsOn ? <Volume2 size={14} /> : <VolumeX size={14} />}
+          {ttsOn ? <Volume2 size={14} aria-hidden="true" /> : <VolumeX size={14} aria-hidden="true" />}
           {lang === "hi" ? "पढ़कर सुनाएँ" : "Read aloud"}
         </button>
       </div>
@@ -261,6 +262,9 @@ const ChatCompanion = () => {
       {/* Chat area */}
       <div
         data-testid="chat-messages"
+        role="log"
+        aria-live="polite"
+        aria-label={lang === "hi" ? "बातचीत" : "Conversation"}
         className="rounded-2xl bg-white border border-navy/5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] p-6 min-h-[420px] max-h-[60vh] overflow-y-auto space-y-4"
       >
         <AnimatePresence initial={false}>
@@ -317,9 +321,12 @@ const ChatCompanion = () => {
         {loading && (
           <div className="flex flex-col items-start gap-1.5">
             <div className="rounded-2xl rounded-tl-sm bg-linen border border-navy/5 px-4 py-3">
-              <span className="dot" />
-              <span className="dot" />
-              <span className="dot" />
+              <span className="sr-only">
+                {lang === "hi" ? "CivicMate टाइप कर रहा है…" : "CivicMate is typing…"}
+              </span>
+              <span aria-hidden="true" className="dot" />
+              <span aria-hidden="true" className="dot" />
+              <span aria-hidden="true" className="dot" />
             </div>
             {showColdStart && (
               <div className="text-xs text-navy/50 px-1" data-testid="cold-start-notice">
@@ -336,6 +343,7 @@ const ChatCompanion = () => {
       {voiceError && (
         <div
           data-testid="voice-error"
+          role="alert"
           className="mt-3 text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2"
         >
           {voiceError}
@@ -354,6 +362,8 @@ const ChatCompanion = () => {
           type="button"
           onClick={toggleMic}
           data-testid="mic-btn"
+          aria-pressed={listening}
+          aria-label={listening ? (lang === "hi" ? "सुनना बंद करें" : "Stop listening") : (lang === "hi" ? "बोलकर पूछें" : "Speak your question")}
           title={listening ? "Stop listening" : "Speak your question"}
           className={`flex-shrink-0 inline-flex items-center justify-center h-12 w-12 rounded-full border transition-all ${
             listening
@@ -361,12 +371,13 @@ const ChatCompanion = () => {
               : "bg-white border-navy/15 text-navy hover:border-saffron hover:text-saffron"
           }`}
         >
-          {listening ? <MicOff size={18} /> : <Mic size={18} />}
+          {listening ? <MicOff size={18} aria-hidden="true" /> : <Mic size={18} aria-hidden="true" />}
         </button>
         <input
           data-testid="chat-input"
           value={input}
           onChange={(e) => setInput(e.target.value)}
+          aria-label={lang === "hi" ? "अपना संदेश लिखें" : "Type your message"}
           placeholder={
             listening
               ? lang === "hi"
@@ -382,15 +393,17 @@ const ChatCompanion = () => {
           type="submit"
           disabled={loading || !input.trim()}
           data-testid="chat-send-btn"
+          aria-busy={loading}
+          aria-label={lang === "hi" ? "भेजें" : "Send"}
           className="inline-flex items-center gap-2 rounded-full bg-navy px-5 py-3.5 text-sm font-semibold text-white hover:bg-saffron disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
-          {loading ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-          <span className="hidden sm:inline">{lang === "hi" ? "भेजें" : "Send"}</span>
+          {loading ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <Send size={16} aria-hidden="true" />}
+          <span className="hidden sm:inline" aria-hidden="true">{lang === "hi" ? "भेजें" : "Send"}</span>
         </button>
       </form>
 
       <p className="mt-3 text-[11px] text-navy/50 flex items-center gap-1.5">
-        <Mic size={11} />
+        <Mic size={11} aria-hidden="true" />
         {lang === "hi"
           ? "टिप: माइक दबाकर हिंदी या अंग्रेज़ी में सीधे बोलें। ब्राउज़र सपोर्ट: Chrome, Edge, Safari।"
           : "Tip: Tap the mic and speak — supports Hindi & English. Best on Chrome / Edge / Safari."}
