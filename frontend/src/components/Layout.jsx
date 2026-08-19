@@ -20,7 +20,10 @@ const Header = () => {
     >
       <div className="max-w-7xl mx-auto px-6 lg:px-12 h-16 flex items-center justify-between">
         <Link to="/" data-testid="brand-link" className="flex items-center gap-2 group">
-          <span className="relative inline-flex h-8 w-8 items-center justify-center rounded-xl bg-navy text-white">
+          <span
+            aria-hidden="true"
+            className="relative inline-flex h-8 w-8 items-center justify-center rounded-xl bg-navy text-white"
+          >
             <Sparkles size={16} className="text-saffron" />
           </span>
           <span className="font-heading font-black text-lg tracking-tight">
@@ -28,7 +31,7 @@ const Header = () => {
           </span>
         </Link>
 
-        <nav className="hidden md:flex items-center gap-8">
+        <nav aria-label="Primary" className="hidden md:flex items-center gap-8">
           <NavLink to="/" end className={navClass} data-testid="nav-home">
             {t.nav.home}
           </NavLink>
@@ -49,9 +52,10 @@ const Header = () => {
         <button
           data-testid="lang-toggle-btn"
           onClick={toggle}
+          aria-label={lang === "en" ? "Switch language to Hindi" : "भाषा अंग्रेज़ी में बदलें"}
           className="flex items-center gap-2 rounded-full border border-navy/15 bg-white px-3 py-1.5 text-xs font-semibold text-navy hover:border-saffron hover:text-saffron transition-colors"
         >
-          <Languages size={14} />
+          <Languages size={14} aria-hidden="true" />
           <span className="tabular-nums">
             {lang === "en" ? "EN → हिं" : "हिं → EN"}
           </span>
@@ -68,7 +72,7 @@ const Footer = () => {
       <div className="max-w-7xl mx-auto px-6 lg:px-12 py-12 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
         <div>
           <div className="flex items-center gap-2">
-            <Sparkles size={16} className="text-saffron" />
+            <Sparkles size={16} className="text-saffron" aria-hidden="true" />
             <span className="font-heading font-black text-xl">{t.brand}</span>
           </div>
           <p className="mt-2 text-sm text-white/60 max-w-md">{t.tagline}</p>
@@ -83,8 +87,13 @@ const Footer = () => {
 
 const Layout = ({ children }) => (
   <div className="min-h-screen bg-linen text-navy flex flex-col">
+    <a href="#main-content" className="skip-link">
+      Skip to main content
+    </a>
     <Header />
-    <main className="flex-1">{children}</main>
+    <main id="main-content" tabIndex={-1} className="flex-1 focus:outline-none">
+      {children}
+    </main>
     <Footer />
   </div>
 );
