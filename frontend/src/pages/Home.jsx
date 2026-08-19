@@ -46,7 +46,7 @@ const Home = () => {
   return (
     <div>
       {/* HERO */}
-      <section className="grain-bg relative overflow-hidden">
+      <section aria-labelledby="hero-heading" className="grain-bg relative overflow-hidden">
         <div className="max-w-7xl mx-auto px-6 lg:px-12 pt-16 pb-24 grid grid-cols-1 lg:grid-cols-12 gap-12 items-start">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -55,11 +55,11 @@ const Home = () => {
             className="lg:col-span-7"
           >
             <div className="inline-flex items-center gap-2 rounded-full border border-navy/15 bg-white/70 px-3 py-1.5 text-[11px] uppercase tracking-[0.2em] text-navy/70">
-              <Sparkles size={12} className="text-saffron" />
+              <Sparkles size={12} className="text-saffron" aria-hidden="true" />
               {t.hero.eyebrow}
             </div>
 
-            <h1 className="mt-6 font-heading text-5xl md:text-6xl lg:text-7xl font-black leading-[1.02] tracking-tight">
+            <h1 id="hero-heading" className="mt-6 font-heading text-5xl md:text-6xl lg:text-7xl font-black leading-[1.02] tracking-tight">
               <span className="block">{t.hero.title1}</span>
               <span className="block">
                 <span className="text-saffron">{t.hero.title2}</span>
@@ -78,7 +78,7 @@ const Home = () => {
                 className="group inline-flex items-center gap-2 rounded-full bg-navy px-6 py-3.5 text-sm font-semibold text-white hover:bg-saffron transition-colors"
               >
                 {t.hero.ctaPrimary}
-                <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
+                <ArrowRight size={16} aria-hidden="true" className="transition-transform group-hover:translate-x-1" />
               </Link>
               <Link
                 to="/complaints"
@@ -90,8 +90,11 @@ const Home = () => {
             </div>
           </motion.div>
 
-          {/* Bento preview */}
+          {/* Bento preview — decorative illustrative mockup, not real
+              content or functional links, so hidden from screen readers
+              to avoid confusing them with fake ticket IDs / chat text */}
           <motion.div
+            aria-hidden="true"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, delay: 0.15 }}
@@ -150,7 +153,7 @@ const Home = () => {
       </section>
 
       {/* FEATURE BENTO */}
-      <section className="max-w-7xl mx-auto px-6 lg:px-12 py-16">
+      <section aria-label={lang === "hi" ? "मुख्य सुविधाएँ" : "Key features"} className="max-w-7xl mx-auto px-6 lg:px-12 py-16">
         <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
           {Object.entries(t.features).map(([key, f], i) => {
             const Icon = featureIcon[key];
@@ -170,7 +173,7 @@ const Home = () => {
                 className={`${spans[key]} rounded-2xl bg-white border border-navy/5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] p-8 hover:shadow-[0_12px_40px_rgb(0,0,0,0.08)] transition-all group`}
               >
                 <div className="flex items-start justify-between">
-                  <div className="h-10 w-10 rounded-xl bg-navy/5 text-navy flex items-center justify-center group-hover:bg-saffron group-hover:text-white transition-colors">
+                  <div aria-hidden="true" className="h-10 w-10 rounded-xl bg-navy/5 text-navy flex items-center justify-center group-hover:bg-saffron group-hover:text-white transition-colors">
                     <Icon size={18} />
                   </div>
                   <Link
@@ -178,7 +181,8 @@ const Home = () => {
                     data-testid={`feature-link-${key}`}
                     className="text-xs font-semibold uppercase tracking-widest text-navy/60 hover:text-saffron inline-flex items-center gap-1"
                   >
-                    Open <ArrowRight size={12} />
+                    Open <span className="sr-only">{f.title}</span>
+                    <ArrowRight size={12} aria-hidden="true" />
                   </Link>
                 </div>
                 <h3 className="mt-6 font-heading text-2xl font-bold text-navy">
@@ -194,9 +198,9 @@ const Home = () => {
       </section>
 
       {/* STATS */}
-      <section className="bg-navy text-white">
+      <section aria-labelledby="stats-heading" className="bg-navy text-white">
         <div className="max-w-7xl mx-auto px-6 lg:px-12 py-16">
-          <h2 className="font-heading text-3xl md:text-4xl font-bold max-w-2xl">
+          <h2 id="stats-heading" className="font-heading text-3xl md:text-4xl font-bold max-w-2xl">
             {t.stats.title}
           </h2>
           <div className="mt-10 grid grid-cols-2 md:grid-cols-4 gap-8">
