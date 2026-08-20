@@ -52,7 +52,7 @@ const dict = {
       en: "EN",
       hi: "हिं",
     },
-    footer: "Made for DEVENGERS PromptWars 2026",
+    footer: "Made with ❤️ in India for Indians",
   },
   hi: {
     brand: "स्मार्ट भारत",
@@ -70,7 +70,7 @@ const dict = {
       title2: "बिना कागज़ी झंझट के",
       title3: "आसान पहुँच।",
       subtitle:
-        "किसी भी नागरिक प्रश्न का उत्तर पाएँ, कुछ ही सेकंड में शिकायत दर्ज करें, आपके लिए बनी योजनाएँ खोजें और ज़रूरी दस्तावेज़ों की सूची पाएँ — सब एक ही जगह।",
+        "किसी भी नागरिक प्रश्न का उत्तर पाएँ, कुछ ही सेकंड में शिकायत दर्ज करें, आ[...]",
       ctaPrimary: "CivicMate से बात करें",
       ctaSecondary: "शिकायत दर्ज करें",
     },
@@ -100,7 +100,7 @@ const dict = {
       languages: "भाषाएँ",
     },
     lang: { en: "EN", hi: "हिं" },
-    footer: "DEVENGERS PromptWars 2026 के लिए बनाया गया",
+    footer: "भारत में ब��े ❤️ भारतीयों के लिए",
   },
 };
 
