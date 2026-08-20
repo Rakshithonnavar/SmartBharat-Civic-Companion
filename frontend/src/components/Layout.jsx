@@ -75,9 +75,9 @@ const Footer = () => {
             <Sparkles size={16} className="text-saffron brand-icon-glow" aria-hidden="true" />
             <span className="font-heading font-black text-xl md:text-2xl brand-glow">{t.brand}</span>
           </div>
-          <p className="mt-2 text-sm text-white/60 max-w-md">{t.tagline}</p>
+          <p className="mt-2 text-sm text-white/80 max-w-md">{t.tagline}</p>
         </div>
-        <div className="text-xs text-white/50 font-mono uppercase tracking-widest">
+        <div className="text-xs text-white font-mono uppercase tracking-widest">
           {t.footer}
         </div>
       </div>
