@@ -123,15 +123,16 @@ const ComplaintTracker = () => {
     setSubmitting(true);
     setSubmitted(null);
     setQueued(false);
+    const payload = { ...form, language: lang };
     try {
-      const res = await api.submitComplaint(form);
+      const res = await api.submitComplaint(payload);
       setSubmitted(res);
       clearDraft();
       setForm(EMPTY_COMPLAINT);
     } catch (err) {
       if (isOfflineError(err)) {
         try {
-          await enqueue(form);
+          await enqueue(payload);
           setQueued(true);
           clearDraft();
           setForm(EMPTY_COMPLAINT);
