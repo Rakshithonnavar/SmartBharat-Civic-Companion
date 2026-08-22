@@ -2,7 +2,7 @@
 Smart Bharat / CivicMate Backend
 GenAI-powered civic services platform using Google Gemini 2.5 Flash.
 """
-from fastapi import FastAPI, APIRouter, HTTPException
+from fastapi import FastAPI, APIRouter, HTTPException, BackgroundTasks, Header
 from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -20,6 +20,8 @@ from datetime import datetime, timezone
 
 import google.generativeai as genai
 from google.api_core import exceptions as google_exceptions
+
+import email_service
 
 
 # ----------------------------------------------------------------------
@@ -121,6 +123,7 @@ class ComplaintCreate(BaseModel):
     category: str  # "Roads", "Water", "Electricity", "Sanitation", "Other"
     location: str
     description: str
+    language: Optional[str] = "en"  # used only to pick the confirmation-email template
 
 
 class ComplaintStatusEntry(BaseModel):
@@ -398,8 +401,29 @@ All text values must be in {lang}. Be accurate for India. Include 5-8 documents,
 
 
 # ---------------- COMPLAINTS ----------------
+@api_router.post("/email/test")
+async def test_email(x_test_token: Optional[str] = Header(default=None)):
+    """Sends a one-off email to the deployer's own configured address to
+    verify SMTP setup after deploying. Safe to leave public: the
+    recipient is hardcoded server-side to SMTP_FROM_EMAIL, never taken
+    from the request, so it cannot be pointed at a third party.
+
+    If EMAIL_TEST_TOKEN is set in the environment, this endpoint also
+    requires a matching X-Test-Token header — an easy opt-in extra
+    layer once you've finished initial setup and want to lock it down.
+    """
+    required_token = os.environ.get("EMAIL_TEST_TOKEN", "").strip()
+    if required_token and x_test_token != required_token:
+        raise HTTPException(status_code=401, detail="Invalid or missing X-Test-Token header")
+
+    ok, message = email_service.send_test_email()
+    if not ok:
+        raise HTTPException(status_code=400, detail=message)
+    return {"sent": True, "detail": message}
+
+
 @api_router.post("/complaints/submit", response_model=Complaint)
-async def submit_complaint(req: ComplaintCreate):
+async def submit_complaint(req: ComplaintCreate, background_tasks: BackgroundTasks):
     ticket = _ticket_id()
 
     # AI enrichment: summary, priority, department routing
@@ -451,6 +475,14 @@ JSON only."""
     )
     doc = complaint.model_dump()
     await db.complaints.insert_one(doc)
+
+    # Best-effort confirmation email — runs after this response is sent,
+    # is a safe no-op if SMTP isn't configured or contact isn't an email,
+    # and can never fail or delay the complaint submission itself.
+    background_tasks.add_task(
+        email_service.send_complaint_confirmation, doc, req.language or "en"
+    )
+
     return complaint
 
 
