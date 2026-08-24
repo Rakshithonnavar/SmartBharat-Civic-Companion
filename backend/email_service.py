@@ -1,28 +1,34 @@
 """
-Email notification service for Smart Bharat.
+Email notification service for Smart Bharat — sends via Brevo's HTTPS
+Transactional Email API (https://api.brevo.com/v3/smtp/email).
 
-Sends a best-effort confirmation email when a citizen submits a complaint
-and leaves a valid email address in the "Phone / Email" contact field.
+Why HTTP instead of SMTP: many free-tier hosts (Render's free plan
+included) block or silently drop outbound SMTP on ports 587/465, since
+those ports are a common spam vector. Port 443 (plain HTTPS) is never
+blocked — it's the same port every web page and API call already uses.
+Brevo's API sends the exact same email an SMTP connection would, just
+over HTTPS instead, which is why this swap fixes deliverability without
+changing anything about what the recipient sees.
 
-Design principles:
-- Optional by default: if SMTP env vars aren't set, every function here
-  is a safe no-op. A deployment with no email configured behaves exactly
-  as before — nothing breaks, nothing is required.
+Design principles (unchanged from the SMTP version):
+- Optional by default: if BREVO_API_KEY isn't set, every function here
+  is a safe no-op. A deployment with no email configured behaves
+  exactly as before — nothing breaks, nothing is required.
 - Best-effort, never load-bearing: a failure to send must never affect
   the complaint record, which is already saved before this runs. Every
-  public function catches its own exceptions and returns a bool instead
-  of raising.
-- Meant to be called from a FastAPI BackgroundTasks task, i.e. AFTER the
-  HTTP response has already been sent to the client — so a slow SMTP
-  server never adds latency to the complaint-submission request.
+  public function catches its own exceptions and returns a bool
+  instead of raising.
+- Meant to be called from a FastAPI BackgroundTasks task, i.e. AFTER
+  the HTTP response has already been sent to the client — so a slow
+  API call never adds latency to the complaint-submission request.
 
 Security notes:
-- Header injection: every value placed into an email header (Subject,
-  To, From) is stripped of CR/LF and other control characters. Without
-  this, a citizen typing a newline into a form field could inject
-  arbitrary extra headers (e.g. a hidden Bcc) into the outgoing email.
-- Body injection / broken markup: every value placed into the HTML body
-  is passed through html.escape() before interpolation.
+- Body injection / broken markup: every value placed into the HTML
+  body is passed through html.escape() before interpolation.
+- JSON injection: the request body is built as a Python dict and
+  serialized by `requests` itself (json= parameter) — user content
+  can never break out of its field the way it could with hand-built
+  MIME headers, since JSON string encoding handles escaping for us.
 - Recipient validation: only sends when the contact field matches a
   strict email pattern. The "Phone / Email" field is often a phone
   number — those are silently skipped, not treated as errors.
@@ -32,20 +38,19 @@ Security notes:
   simple in-memory per-recipient rate limit throttles repeat sends to
   the same address. This assumes a single backend process, consistent
   with the existing in-memory AI-response cache elsewhere in this repo.
-- Credentials: SMTP_PASSWORD is read from the environment and never
-  logged, echoed, or included in any exception message we log.
+- Credentials: BREVO_API_KEY is read from the environment and never
+  logged, echoed, or included in any exception message we log or
+  return to a caller.
 """
 
 import html
 import logging
 import os
 import re
-import smtplib
 import time
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-from email.utils import formataddr
 from typing import Dict, Optional, Tuple
+
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -53,12 +58,13 @@ logger = logging.getLogger(__name__)
 # Configuration — all optional. Read once at import time, same pattern
 # as the rest of server.py (GEMINI_API_KEY, MONGO_URL, etc.)
 # ---------------------------------------------------------------------
-SMTP_HOST = os.environ.get("SMTP_HOST", "").strip()
-SMTP_PORT = int(os.environ.get("SMTP_PORT", "587") or "587")
-SMTP_USER = os.environ.get("SMTP_USER", "").strip()
-SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
-SMTP_FROM_EMAIL = os.environ.get("SMTP_FROM_EMAIL", "").strip() or SMTP_USER
-SMTP_FROM_NAME = os.environ.get("SMTP_FROM_NAME", "Smart Bharat").strip()
+BREVO_API_KEY = os.environ.get("BREVO_API_KEY", "").strip()
+BREVO_API_URL = "https://api.brevo.com/v3/smtp/email"
+
+# The sender address must be a verified sender in your Brevo account
+# (Settings -> Senders, domains, IPs -> Senders).
+EMAIL_FROM_ADDRESS = os.environ.get("EMAIL_FROM_ADDRESS", "").strip()
+EMAIL_FROM_NAME = os.environ.get("EMAIL_FROM_NAME", "Smart Bharat").strip()
 # Optional — used to build a "track your complaint" link in the email.
 APP_URL = os.environ.get("APP_URL", "").strip().rstrip("/")
 
@@ -68,10 +74,12 @@ _CONTROL_CHARS_RE = re.compile(r"[\r\n\x00-\x08\x0b\x0c\x0e-\x1f]")
 _RATE_LIMIT_SECONDS = 60
 _last_sent_at: Dict[str, float] = {}
 
+_REQUEST_TIMEOUT_SECONDS = 10
+
 
 def is_configured() -> bool:
-    """True only when the minimum SMTP settings are present."""
-    return bool(SMTP_HOST and SMTP_USER and SMTP_PASSWORD and SMTP_FROM_EMAIL)
+    """True only when the minimum settings are present."""
+    return bool(BREVO_API_KEY and EMAIL_FROM_ADDRESS)
 
 
 def is_valid_email(value: Optional[str]) -> bool:
@@ -83,9 +91,11 @@ def is_valid_email(value: Optional[str]) -> bool:
     return bool(_EMAIL_RE.match(value))
 
 
-def _sanitize_header(value: str) -> str:
-    """Strip CR/LF/control chars so user input can never inject extra
-    email headers (classic SMTP header-injection attack)."""
+def _sanitize(value: str) -> str:
+    """Strip CR/LF/control chars — defense in depth. The Brevo API body
+    is JSON, so this isn't needed to prevent header injection the way
+    it was for raw SMTP, but it still keeps display fields (names,
+    subjects) from containing stray control characters."""
     return _CONTROL_CHARS_RE.sub("", value or "").strip()
 
 
@@ -135,13 +145,13 @@ _COPY = {
 }
 
 
-def _build_message(complaint: dict, language: str) -> MIMEMultipart:
+def _build_payload(complaint: dict, language: str, recipient: str) -> dict:
+    """Builds the JSON body for Brevo's /v3/smtp/email endpoint."""
     copy = _COPY.get(language, _COPY["en"])
-    recipient = complaint["contact"].strip()
 
-    ticket_id = _sanitize_header(str(complaint.get("ticket_id", "")))
-    name = _sanitize_header(str(complaint.get("citizen_name", "")))[:100] or "Citizen"
-    subject = _sanitize_header(copy["subject"].format(ticket_id=ticket_id))
+    ticket_id = _sanitize(str(complaint.get("ticket_id", "")))
+    name = _sanitize(str(complaint.get("citizen_name", "")))[:100] or "Citizen"
+    subject = _sanitize(copy["subject"].format(ticket_id=ticket_id))
 
     # Every value below is user-influenced (directly or via the AI triage
     # of user text), so it's HTML-escaped before going into the HTML body.
@@ -155,7 +165,6 @@ def _build_message(complaint: dict, language: str) -> MIMEMultipart:
     track_url = f"{APP_URL}/complaints" if APP_URL else ""
 
     summary_line = f"{copy['summary_label']}: {complaint.get('ai_summary')}\n" if complaint.get("ai_summary") else ""
-
     text_body = (
         f"{copy['greeting'].format(name=name)}\n\n"
         f"{copy['body']}\n\n"
@@ -200,27 +209,30 @@ def _build_message(complaint: dict, language: str) -> MIMEMultipart:
   </div>
 </body></html>"""
 
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"] = formataddr((_sanitize_header(SMTP_FROM_NAME), SMTP_FROM_EMAIL))
-    msg["To"] = recipient
-    msg.attach(MIMEText(text_body, "plain", "utf-8"))
-    msg.attach(MIMEText(html_body, "html", "utf-8"))
-    return msg
+    return {
+        "sender": {"name": _sanitize(EMAIL_FROM_NAME), "email": EMAIL_FROM_ADDRESS},
+        "to": [{"email": recipient, "name": name}],
+        "subject": subject,
+        "htmlContent": html_body,
+        "textContent": text_body,
+    }
 
 
-def _dispatch(msg: MIMEMultipart, recipient: str) -> None:
-    """Opens the SMTP connection and sends. Raises on failure — the
-    caller (send_complaint_confirmation) is responsible for catching."""
-    if SMTP_PORT == 465:
-        with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=10) as server:
-            server.login(SMTP_USER, SMTP_PASSWORD)
-            server.sendmail(SMTP_FROM_EMAIL, [recipient], msg.as_string())
-    else:
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=10) as server:
-            server.starttls()
-            server.login(SMTP_USER, SMTP_PASSWORD)
-            server.sendmail(SMTP_FROM_EMAIL, [recipient], msg.as_string())
+def _dispatch(payload: dict) -> None:
+    """POSTs to Brevo's API over HTTPS (port 443 — never blocked by
+    host firewalls the way SMTP ports 587/465 sometimes are). Raises
+    on failure; callers are responsible for catching."""
+    resp = requests.post(
+        BREVO_API_URL,
+        json=payload,
+        headers={
+            "accept": "application/json",
+            "content-type": "application/json",
+            "api-key": BREVO_API_KEY,
+        },
+        timeout=_REQUEST_TIMEOUT_SECONDS,
+    )
+    resp.raise_for_status()
 
 
 def send_complaint_confirmation(complaint: dict, language: str = "en") -> bool:
@@ -228,7 +240,7 @@ def send_complaint_confirmation(complaint: dict, language: str = "en") -> bool:
 
     Intended to be run via FastAPI's BackgroundTasks, after the HTTP
     response has already gone back to the client. Never raises.
-    Returns True only if the message was successfully handed to SMTP.
+    Returns True only if Brevo accepted the message.
     """
     if not is_configured():
         logger.debug("Email not configured — skipping confirmation email")
@@ -246,8 +258,8 @@ def send_complaint_confirmation(complaint: dict, language: str = "en") -> bool:
         return False
 
     try:
-        msg = _build_message(complaint, language if language in _COPY else "en")
-        _dispatch(msg, recipient)
+        payload = _build_payload(complaint, language if language in _COPY else "en", recipient)
+        _dispatch(payload)
         logger.info("Confirmation email sent for ticket %s", ticket_id)
         return True
     except Exception as exc:
@@ -258,61 +270,71 @@ def send_complaint_confirmation(complaint: dict, language: str = "en") -> bool:
 
 
 def send_test_email() -> Tuple[bool, str]:
-    """Sends a one-off test email to verify SMTP setup after deploying.
+    """Sends a one-off test email to verify the Brevo API key + verified
+    sender are set up correctly after deploying.
 
-    Deliberately hardcoded to send ONLY to SMTP_FROM_EMAIL — the mailbox
-    the deployer themselves configured — never to a caller-supplied
-    address. That's what makes it safe to expose as a public endpoint:
-    there's no way to point it at a third party, so it can't become a
-    spam-relay vector the way an arbitrary-recipient endpoint would.
+    Deliberately hardcoded to send ONLY to EMAIL_FROM_ADDRESS — the
+    mailbox the deployer themselves configured — never to a
+    caller-supplied address. That's what makes it safe to expose as a
+    public endpoint: there's no way to point it at a third party, so it
+    can't become a spam-relay vector the way an arbitrary-recipient
+    endpoint would.
 
     Returns (success, message) — message is a short human-readable
     explanation either way, safe to return directly in an HTTP response
-    (it never includes SMTP_PASSWORD or any other secret).
+    (it never includes BREVO_API_KEY or any other secret).
     """
     if not is_configured():
         missing = [
             name
             for name, val in [
-                ("SMTP_HOST", SMTP_HOST),
-                ("SMTP_USER", SMTP_USER),
-                ("SMTP_PASSWORD", SMTP_PASSWORD),
-                ("SMTP_FROM_EMAIL", SMTP_FROM_EMAIL),
+                ("BREVO_API_KEY", BREVO_API_KEY),
+                ("EMAIL_FROM_ADDRESS", EMAIL_FROM_ADDRESS),
             ]
             if not val
         ]
         return False, f"Email is not configured. Missing: {', '.join(missing)}"
 
-    if not is_valid_email(SMTP_FROM_EMAIL):
-        return False, "SMTP_FROM_EMAIL is not a valid email address"
+    if not is_valid_email(EMAIL_FROM_ADDRESS):
+        return False, "EMAIL_FROM_ADDRESS is not a valid email address"
 
-    test_key = f"test:{SMTP_FROM_EMAIL}"
+    test_key = f"test:{EMAIL_FROM_ADDRESS}"
     if _rate_limited(test_key):
         return False, f"Rate limited — please wait up to {_RATE_LIMIT_SECONDS}s between test emails"
 
     complaint = {
         "ticket_id": "SB-TESTEMAIL",
         "citizen_name": "Smart Bharat",
-        "contact": SMTP_FROM_EMAIL,
+        "contact": EMAIL_FROM_ADDRESS,
         "category": "Email configuration test",
         "ai_priority": "n/a",
         "ai_department": "n/a",
-        "ai_summary": "This is a test email confirming SMTP is configured correctly.",
+        "ai_summary": "This is a test email confirming the Brevo API integration is working.",
     }
 
     try:
-        msg = _build_message(complaint, "en")
-        msg.replace_header(
-            "Subject",
-            _sanitize_header("Smart Bharat — test email (SMTP is working)"),
-        )
-        _dispatch(msg, SMTP_FROM_EMAIL)
-        logger.info("Test email sent successfully to %s", SMTP_FROM_EMAIL)
-        return True, f"Test email sent to {SMTP_FROM_EMAIL}"
-    except smtplib.SMTPAuthenticationError:
-        return False, "SMTP authentication failed — check SMTP_USER and SMTP_PASSWORD"
-    except (smtplib.SMTPConnectError, OSError) as exc:
-        return False, f"Could not connect to SMTP server: {exc}"
+        payload = _build_payload(complaint, "en", EMAIL_FROM_ADDRESS)
+        payload["subject"] = _sanitize("Smart Bharat — test email (Brevo API is working)")
+        _dispatch(payload)
+        logger.info("Test email sent successfully to %s", EMAIL_FROM_ADDRESS)
+        return True, f"Test email sent to {EMAIL_FROM_ADDRESS}"
+    except requests.exceptions.HTTPError as exc:
+        status = exc.response.status_code if exc.response is not None else "unknown"
+        if status == 401:
+            return False, "Brevo rejected the API key (401 Unauthorized) — check BREVO_API_KEY"
+        if status == 400:
+            # Most common cause: EMAIL_FROM_ADDRESS isn't a verified sender in Brevo
+            detail = ""
+            try:
+                detail = exc.response.json().get("message", "")
+            except Exception:
+                pass
+            return False, f"Brevo rejected the request (400): {detail or 'check that EMAIL_FROM_ADDRESS is a verified sender in Brevo'}"
+        return False, f"Brevo API returned an error (status {status})"
+    except requests.exceptions.Timeout:
+        return False, "Timed out connecting to Brevo's API"
+    except requests.exceptions.ConnectionError as exc:
+        return False, f"Could not connect to Brevo's API: {exc}"
     except Exception as exc:
         logger.warning("Test email failed: %s", exc)
         return False, f"Failed to send: {exc}"
