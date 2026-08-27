@@ -46,6 +46,76 @@ logging.basicConfig(
 )
 logger = logging.getLogger("civicmate")
 
+# ----------------------------------------------------------------------
+# Error monitoring (OPTIONAL — no-ops entirely if SENTRY_DSN isn't set)
+#
+# Must run before `FastAPI()` is created so the integration wraps every
+# route handler from the start.
+#
+# PII safety: this app handles citizen complaint data (name, contact,
+# free-text description) that must never leave the server unredacted.
+# Three layers, each independent so one gap doesn't expose the others:
+#   1. send_default_pii=False        — never auto-attach request
+#      cookies/headers/IP/user data.
+#   2. include_local_variables=False — an exception raised while
+#      handling a complaint would otherwise capture that complaint's
+#      raw fields (name, contact, description) as stack-trace local
+#      variables. This is Sentry's biggest PII leak vector for an app
+#      like this one, and it's a single documented flag to close.
+#   3. before_send=_scrub_pii        — a defensive last pass that
+#      redacts known PII field names anywhere they appear in the
+#      outgoing event (extra context, breadcrumbs, etc.), in case a
+#      future code change adds one of these fields somewhere the first
+#      two layers don't cover.
+# ----------------------------------------------------------------------
+SENTRY_DSN = os.environ.get("SENTRY_DSN", "").strip()
+if SENTRY_DSN:
+    import sentry_sdk
+    from sentry_sdk.integrations.fastapi import FastApiIntegration
+    from sentry_sdk.integrations.starlette import StarletteIntegration
+    from sentry_sdk.integrations.logging import LoggingIntegration
+
+    _SENTRY_PII_FIELDS = {"citizen_name", "contact", "description", "email", "phone", "location", "name"}
+
+    def _scrub_pii(event, hint):
+        """Redacts known PII field names anywhere in an outgoing event.
+        Defense-in-depth on top of include_local_variables=False —
+        never lets a scrubbing bug block error reporting itself."""
+
+        def _redact(obj):
+            if isinstance(obj, dict):
+                return {k: ("[Filtered]" if k in _SENTRY_PII_FIELDS else _redact(v)) for k, v in obj.items()}
+            if isinstance(obj, list):
+                return [_redact(v) for v in obj]
+            return obj
+
+        try:
+            return _redact(event)
+        except Exception:
+            return event
+
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        environment=os.environ.get("SENTRY_ENVIRONMENT", "production"),
+        release=os.environ.get("RENDER_GIT_COMMIT") or os.environ.get("SENTRY_RELEASE"),
+        integrations=[
+            FastApiIntegration(),
+            StarletteIntegration(),
+            LoggingIntegration(level=logging.INFO, event_level=logging.ERROR),
+        ],
+        # Error monitoring, not full APM — off by default to protect a
+        # free-tier quota and minimize what leaves the server. Opt in
+        # per-deploy via SENTRY_TRACES_SAMPLE_RATE if performance
+        # tracing is ever wanted.
+        traces_sample_rate=float(os.environ.get("SENTRY_TRACES_SAMPLE_RATE", "0.0")),
+        send_default_pii=False,
+        include_local_variables=False,
+        before_send=_scrub_pii,
+    )
+    logger.info("Sentry error monitoring enabled (environment=%s)", os.environ.get("SENTRY_ENVIRONMENT", "production"))
+else:
+    logger.info("SENTRY_DSN not set — error monitoring disabled")
+
 app = FastAPI(title="Smart Bharat API", version="1.0.0")
 api_router = APIRouter(prefix="/api")
 
