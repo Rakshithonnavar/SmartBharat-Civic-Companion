@@ -2,15 +2,17 @@
 Smart Bharat / CivicMate Backend
 GenAI-powered civic services platform using Google Gemini 2.5 Flash.
 """
-from fastapi import FastAPI, APIRouter, HTTPException, BackgroundTasks, Header
+from fastapi import FastAPI, APIRouter, HTTPException, BackgroundTasks, Header, Depends
 from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo.errors import DuplicateKeyError
 import os
 import json
 import logging
 import asyncio
+import re
 import time
 import uuid
 from pathlib import Path
@@ -22,6 +24,7 @@ import google.generativeai as genai
 from google.api_core import exceptions as google_exceptions
 
 import email_service
+import admin_auth
 
 
 # ----------------------------------------------------------------------
@@ -119,6 +122,11 @@ else:
 app = FastAPI(title="Smart Bharat API", version="1.0.0")
 api_router = APIRouter(prefix="/api")
 
+# Admin-auth dependency, bound to this app's actual `db` handle — see
+# admin_auth.make_get_current_admin for why this is a factory rather
+# than a module-level singleton.
+get_current_admin = admin_auth.make_get_current_admin(db)
+
 
 # ----------------------------------------------------------------------
 # System prompts
@@ -200,6 +208,7 @@ class ComplaintStatusEntry(BaseModel):
     status: str
     note: str
     timestamp: str
+    updated_by: Optional[str] = None  # admin name, when the change was made from the admin dashboard; None for citizen-triggered entries (e.g. initial "Submitted")
 
 
 class Complaint(BaseModel):
@@ -219,12 +228,6 @@ class Complaint(BaseModel):
     created_at: str = Field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
-
-
-class ComplaintUpdate(BaseModel):
-    ticket_id: str
-    new_status: Literal["Submitted", "Under Review", "In Progress", "Resolved"]
-    note: str = ""
 
 
 # ----------------------------------------------------------------------
@@ -564,29 +567,6 @@ async def track_complaint(ticket_id: str):
     return Complaint(**doc)
 
 
-@api_router.get("/complaints/all", response_model=List[Complaint])
-async def list_complaints():
-    docs = await db.complaints.find({}, {"_id": 0}).sort("created_at", -1).to_list(100)
-    return [Complaint(**d) for d in docs]
-
-
-@api_router.post("/complaints/update-status", response_model=Complaint)
-async def update_complaint_status(req: ComplaintUpdate):
-    doc = await db.complaints.find_one({"ticket_id": req.ticket_id}, {"_id": 0})
-    if not doc:
-        raise HTTPException(status_code=404, detail="Ticket not found")
-    now = datetime.now(timezone.utc).isoformat()
-    doc["current_status"] = req.new_status
-    doc.setdefault("timeline", []).append(
-        {"status": req.new_status, "note": req.note or "", "timestamp": now}
-    )
-    await db.complaints.update_one(
-        {"ticket_id": req.ticket_id},
-        {"$set": {"current_status": doc["current_status"], "timeline": doc["timeline"]}},
-    )
-    return Complaint(**doc)
-
-
 @api_router.get("/complaints/stats")
 async def complaint_stats():
     total = await db.complaints.count_documents({})
@@ -598,6 +578,210 @@ async def complaint_stats():
         "in_progress": in_progress,
         "citizens_helped": total * 3 + 1240,  # showcase number
         "services_indexed": 180,
+    }
+
+
+# ---------------- ADMIN DASHBOARD ----------------
+# Everything below requires an authenticated admin (Depends(get_current_admin))
+# except signup, which is intentionally open ONLY while zero admins
+# exist yet (see admin_auth.py's module docstring for the full
+# reasoning). This replaces the old /complaints/all and
+# /complaints/update-status endpoints, which had no authentication at
+# all — any caller could list every citizen's name, contact, and
+# complaint text, and could rewrite any complaint's status. Neither
+# was ever used by the citizen-facing frontend (only /complaints/stats
+# and /complaints/track/{id} are), so removing them is a pure security
+# fix with no functional loss.
+
+class AdminComplaintStatusUpdate(BaseModel):
+    new_status: Literal["Submitted", "Under Review", "In Progress", "Resolved"]
+    note: str = Field(default="", max_length=1000)
+
+
+class PaginatedComplaints(BaseModel):
+    items: List[Complaint]
+    total: int
+    page: int
+    page_size: int
+
+
+@api_router.post("/admin/auth/signup", response_model=admin_auth.AdminPublic, status_code=201)
+async def admin_signup(req: admin_auth.AdminSignup, authorization: Optional[str] = Header(default=None)):
+    bootstrap_open = await admin_auth.is_bootstrap_available(db)
+    if not bootstrap_open:
+        # Not the very first admin anymore — creating an account now
+        # requires being an already-authenticated admin (invite-style).
+        # This re-runs the same check get_current_admin does, called
+        # directly rather than via Depends() so it can be skipped
+        # entirely during bootstrap (when no admin exists yet to auth as).
+        await get_current_admin(authorization=authorization)
+
+    existing = await admin_auth.get_admin_by_email(db, req.email)
+    if existing:
+        raise HTTPException(status_code=409, detail="An account with this email already exists")
+
+    now = datetime.now(timezone.utc).isoformat()
+    admin_doc = {
+        "id": str(uuid.uuid4()),
+        "name": req.name.strip(),
+        "email": req.email,
+        "password_hash": admin_auth.hash_password(req.password),
+        "created_at": now,
+    }
+    try:
+        await db.admins.insert_one(admin_doc)
+    except DuplicateKeyError:
+        # The unique index on admins.email (see admin_auth.ensure_indexes)
+        # is the real guarantee against a race between two concurrent
+        # signups for the same email; the check above is just a fast
+        # path for the common case. Turn that DB-level rejection into
+        # the same clean 409 rather than a raw 500.
+        raise HTTPException(status_code=409, detail="An account with this email already exists")
+
+    logger.info("New admin account created: %s", admin_doc["email"])
+    return admin_auth.to_public(admin_doc)
+
+
+@api_router.post("/admin/auth/login", response_model=admin_auth.TokenResponse)
+async def admin_login(req: admin_auth.AdminLogin):
+    limited, retry_after = admin_auth.is_login_rate_limited(req.email)
+    if limited:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many failed login attempts. Try again in {retry_after // 60 + 1} minute(s).",
+        )
+
+    admin = await admin_auth.get_admin_by_email(db, req.email)
+    # Verify against a real bcrypt hash whether or not the email exists
+    # (falling back to a precomputed dummy hash) — see admin_auth._DUMMY_HASH
+    # for why: it keeps response timing from revealing which emails have
+    # admin accounts.
+    password_hash = admin["password_hash"] if admin else admin_auth._DUMMY_HASH
+    valid = admin_auth.verify_password(req.password, password_hash)
+
+    if not admin or not valid:
+        admin_auth.record_failed_login(req.email)
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    admin_auth.clear_login_attempts(req.email)
+    token = admin_auth.create_access_token(admin["id"], admin["email"])
+    return admin_auth.TokenResponse(
+        access_token=token,
+        expires_in_hours=admin_auth.JWT_EXPIRY_HOURS,
+        admin=admin_auth.to_public(admin),
+    )
+
+
+@api_router.get("/admin/auth/me", response_model=admin_auth.AdminPublic)
+async def admin_me(admin: dict = Depends(get_current_admin)):
+    return admin_auth.to_public(admin)
+
+
+@api_router.get("/admin/complaints", response_model=PaginatedComplaints)
+async def admin_list_complaints(
+    status: Optional[str] = None,
+    category: Optional[str] = None,
+    priority: Optional[str] = None,
+    search: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 20,
+    admin: dict = Depends(get_current_admin),
+):
+    page = max(page, 1)
+    page_size = min(max(page_size, 1), 100)
+
+    query: dict = {}
+    if status:
+        query["current_status"] = status
+    if category:
+        query["category"] = category
+    if priority:
+        query["ai_priority"] = priority
+    if search and search.strip():
+        # re.escape neutralizes regex metacharacters in user input —
+        # without it, a search term could be interpreted as a regex
+        # pattern instead of literal text (unexpected matches at best,
+        # a ReDoS vector at worst).
+        pattern = re.escape(search.strip())
+        query["$or"] = [
+            {"ticket_id": {"$regex": pattern, "$options": "i"}},
+            {"citizen_name": {"$regex": pattern, "$options": "i"}},
+            {"description": {"$regex": pattern, "$options": "i"}},
+            {"location": {"$regex": pattern, "$options": "i"}},
+        ]
+
+    total = await db.complaints.count_documents(query)
+    docs = (
+        await db.complaints.find(query, {"_id": 0})
+        .sort("created_at", -1)
+        .skip((page - 1) * page_size)
+        .limit(page_size)
+        .to_list(page_size)
+    )
+    return PaginatedComplaints(
+        items=[Complaint(**d) for d in docs],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@api_router.get("/admin/complaints/{ticket_id}", response_model=Complaint)
+async def admin_get_complaint(ticket_id: str, admin: dict = Depends(get_current_admin)):
+    doc = await db.complaints.find_one({"ticket_id": ticket_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    return Complaint(**doc)
+
+
+@api_router.patch("/admin/complaints/{ticket_id}/status", response_model=Complaint)
+async def admin_update_complaint_status(
+    ticket_id: str,
+    req: AdminComplaintStatusUpdate,
+    admin: dict = Depends(get_current_admin),
+):
+    doc = await db.complaints.find_one({"ticket_id": ticket_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    now = datetime.now(timezone.utc).isoformat()
+    doc["current_status"] = req.new_status
+    doc.setdefault("timeline", []).append(
+        {
+            "status": req.new_status,
+            "note": req.note or "",
+            "timestamp": now,
+            "updated_by": admin["name"],
+        }
+    )
+    await db.complaints.update_one(
+        {"ticket_id": ticket_id},
+        {"$set": {"current_status": doc["current_status"], "timeline": doc["timeline"]}},
+    )
+    logger.info("Complaint %s status updated to '%s' by admin %s", ticket_id, req.new_status, admin["email"])
+    return Complaint(**doc)
+
+
+@api_router.get("/admin/stats")
+async def admin_stats(admin: dict = Depends(get_current_admin)):
+    total = await db.complaints.count_documents({})
+    statuses = ["Submitted", "Under Review", "In Progress", "Resolved"]
+    by_status = {s: await db.complaints.count_documents({"current_status": s}) for s in statuses}
+
+    category_docs = await db.complaints.aggregate(
+        [{"$group": {"_id": "$category", "count": {"$sum": 1}}}]
+    ).to_list(50)
+    by_category = {d["_id"]: d["count"] for d in category_docs if d.get("_id")}
+
+    priority_docs = await db.complaints.aggregate(
+        [{"$group": {"_id": "$ai_priority", "count": {"$sum": 1}}}]
+    ).to_list(10)
+    by_priority = {(d["_id"] or "unspecified"): d["count"] for d in priority_docs}
+
+    return {
+        "total": total,
+        "by_status": by_status,
+        "by_category": by_category,
+        "by_priority": by_priority,
     }
 
 
@@ -613,6 +797,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+async def ensure_admin_indexes():
+    await admin_auth.ensure_indexes(db)
 
 
 @app.on_event("shutdown")
