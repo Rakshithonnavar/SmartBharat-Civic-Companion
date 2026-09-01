@@ -1,4 +1,4 @@
-import "@/App.css";
+import "@/App.css"; 
 import { BrowserRouter, Routes, Route, Outlet } from "react-router-dom";
 import { LanguageProvider } from "@/context/LanguageContext";
 import { AdminAuthProvider } from "@/context/AdminAuthContext";
