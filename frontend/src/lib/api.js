@@ -18,8 +18,5 @@ export const api = {
     client.post("/complaints/submit", payload).then((r) => r.data),
   trackComplaint: (ticketId) =>
     client.get(`/complaints/track/${ticketId}`).then((r) => r.data),
-  listComplaints: () => client.get("/complaints/all").then((r) => r.data),
-  updateComplaint: (payload) =>
-    client.post("/complaints/update-status", payload).then((r) => r.data),
   stats: () => client.get("/complaints/stats").then((r) => r.data),
 };
