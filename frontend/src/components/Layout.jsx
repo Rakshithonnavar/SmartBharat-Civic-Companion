@@ -1,7 +1,7 @@
 import React from "react";
 import { NavLink, Link } from "react-router-dom";
 import { useLang } from "@/context/LanguageContext";
-import { Languages, Sparkles } from "lucide-react";
+import { Languages } from "lucide-react";
 
 const Header = () => {
   const { t, lang, toggle } = useLang();
@@ -22,9 +22,9 @@ const Header = () => {
         <Link to="/" data-testid="brand-link" className="flex items-center gap-2 group">
           <span
             aria-hidden="true"
-            className="relative inline-flex h-8 w-8 items-center justify-center rounded-xl bg-navy text-white brand-icon-glow"
+            className="relative inline-flex h-8 w-8 items-center justify-center rounded-xl bg-navy text-base brand-icon-glow"
           >
-            <Sparkles size={16} className="text-saffron" />
+            🇮🇳
           </span>
           <span className="font-heading font-black text-lg md:text-xl tracking-tight brand-glow">
             {t.brand}
@@ -72,7 +72,7 @@ const Footer = () => {
       <div className="max-w-7xl mx-auto px-6 lg:px-12 py-12 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
         <div>
           <div className="flex items-center gap-2">
-            <Sparkles size={16} className="text-saffron brand-icon-glow" aria-hidden="true" />
+            <span className="text-base brand-icon-glow" aria-hidden="true">🇮🇳</span>
             <span className="font-heading font-black text-xl md:text-2xl brand-glow">{t.brand}</span>
           </div>
           <p className="mt-2 text-sm text-white/80 max-w-md">{t.tagline}</p>
