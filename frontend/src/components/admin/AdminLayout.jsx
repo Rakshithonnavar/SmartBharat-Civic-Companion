@@ -8,10 +8,10 @@ import {
   LogOut,
   Menu,
   X,
-  Sparkles,
   ExternalLink,
 } from "lucide-react";
 import { useAdminAuth } from "@/context/AdminAuthContext";
+import IndiaFlagIcon from "@/components/IndiaFlagIcon";
 
 const NAV_ITEMS = [
   { to: "/admin", label: "Dashboard", icon: LayoutDashboard, end: true },
@@ -39,9 +39,9 @@ const SidebarContent = ({ onNavigate }) => {
         <Link to="/" className="flex items-center gap-2 group">
           <span
             aria-hidden="true"
-            className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-white/10 text-saffron"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-white/10 overflow-hidden"
           >
-            <Sparkles size={16} />
+            <IndiaFlagIcon size={20} />
           </span>
           <span className="font-heading font-black text-lg tracking-tight text-white">
             Smart Bharat
