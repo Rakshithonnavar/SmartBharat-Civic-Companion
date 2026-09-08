@@ -1,8 +1,9 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Loader2, Sparkles, Eye, EyeOff, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Loader2, Eye, EyeOff, AlertCircle, CheckCircle2 } from "lucide-react";
 import { adminApi } from "@/lib/adminApi";
+import IndiaFlagIcon from "@/components/IndiaFlagIcon";
 
 const AdminSetup = () => {
   const navigate = useNavigate();
@@ -57,9 +58,9 @@ const AdminSetup = () => {
         <div className="flex items-center justify-center gap-2 mb-8">
           <span
             aria-hidden="true"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 text-saffron"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 overflow-hidden"
           >
-            <Sparkles size={18} />
+            <IndiaFlagIcon size={22} />
           </span>
           <span className="font-heading font-black text-xl text-white tracking-tight">
             Smart Bharat
