@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowRight, MessageSquare, ClipboardList, Compass, FileCheck2, Sparkles } from "lucide-react";
+import { ArrowRight, MessageSquare, ClipboardList, Compass, FileCheck2, Sparkles, ShieldCheck } from "lucide-react";
 import { useLang } from "@/context/LanguageContext";
 import { api } from "@/lib/api";
 
@@ -149,6 +149,38 @@ const Home = () => {
               </div>
             </div>
           </motion.div>
+        </div>
+      </section>
+
+      {/* ADMIN ACCESS — separate, visually distinct entry point for
+          municipal staff. Deliberately links to /admin/login only;
+          /admin/setup is never surfaced here (it self-closes after the
+          first admin account exists, and isn't meant for public discovery). */}
+      <section aria-label={lang === "hi" ? "प्रशासन पहुंच" : "Admin access"} className="max-w-7xl mx-auto px-6 lg:px-12 py-10">
+        <div className="rounded-2xl bg-navy text-white p-6 md:p-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
+          <div className="flex items-start gap-3">
+            <div aria-hidden="true" className="h-10 w-10 shrink-0 rounded-xl bg-white/10 text-white/70 flex items-center justify-center">
+              <ShieldCheck size={18} />
+            </div>
+            <div>
+              <div className="text-[11px] uppercase tracking-widest text-white/50">
+                {lang === "hi" ? "नगर निगम कर्मचारी" : "Municipal staff"}
+              </div>
+              <p className="mt-1 text-sm text-white/70 max-w-md leading-relaxed">
+                {lang === "hi"
+                  ? "शिकायतों और नागरिक प्रतिक्रियाओं के प्रबंधन के लिए एडमिन डैशबोर्ड।"
+                  : "Manage citizen complaints and responses from the admin dashboard."}
+              </p>
+            </div>
+          </div>
+          <Link
+            to="/admin/login"
+            data-testid="admin-login-link"
+            className="shrink-0 inline-flex items-center gap-2 rounded-full border border-white/20 px-5 py-2.5 text-sm font-semibold text-white hover:bg-white/10 transition-colors"
+          >
+            {lang === "hi" ? "एडमिन साइन इन" : "Admin sign in"}
+            <ArrowRight size={14} aria-hidden="true" />
+          </Link>
         </div>
       </section>
 
