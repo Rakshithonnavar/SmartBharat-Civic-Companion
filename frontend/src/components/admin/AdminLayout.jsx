@@ -125,9 +125,9 @@ const AdminLayout = ({ children }) => {
               role="dialog"
               aria-modal="true"
               aria-label="Admin navigation"
-              className="fixed inset-y-0 left-0 w-72 max-w-[85vw] bg-navy z-50 md:hidden"
+              className="fixed inset-y-0 left-0 w-72 max-w-[85vw] bg-navy z-50 md:hidden flex flex-col overflow-hidden"
             >
-              <div className="flex justify-end p-3">
+              <div className="flex justify-end p-3 shrink-0">
                 <button
                   onClick={() => setMobileOpen(false)}
                   aria-label="Close menu"
@@ -137,7 +137,7 @@ const AdminLayout = ({ children }) => {
                   <X size={18} />
                 </button>
               </div>
-              <SidebarContent onNavigate={() => setMobileOpen(false)} />
+              <div className="flex-1 min-h-0 overflow-y-auto">   <SidebarContent onNavigate={() => setMobileOpen(false)} /> </div>
             </motion.aside>
           </React.Fragment>
         )}
