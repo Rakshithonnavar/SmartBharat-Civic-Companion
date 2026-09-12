@@ -176,7 +176,7 @@ const Home = () => {
           <Link
             to="/admin/login"
             data-testid="admin-login-link"
-            className="shrink-0 inline-flex items-center gap-2 rounded-full border border-white/20 px-5 py-2.5 text-sm font-semibold text-white hover:bg-white/10 transition-colors"
+            className="shrink-0 inline-flex items-center gap-2 rounded-full bg-saffron px-5 py-2.5 text-sm font-semibold text-white hover:bg-saffron/90 transition-colors"
           >
             {lang === "hi" ? "एडमिन साइन इन" : "Admin sign in"}
             <ArrowRight size={14} aria-hidden="true" />
