@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { motion } from "framer-motion";
-import { CheckCircle2, Clock, AlertCircle, Loader2, Search, Sparkles, CloudUpload } from "lucide-react";
+import { CheckCircle2, Clock, AlertCircle, Loader2, Search, Sparkles, CloudUpload, ImagePlus, X } from "lucide-react";
 import { useLang } from "@/context/LanguageContext";
 import { api } from "@/lib/api";
 import { useColdStartNotice } from "@/hooks/useColdStartNotice";
@@ -8,6 +8,7 @@ import { useOfflineForm } from "@/hooks/useOfflineForm";
 import { useOfflineQueue } from "@/hooks/useOfflineQueue";
 import { isOfflineError } from "@/lib/networkError";
 import OfflineStatusBadge from "@/components/OfflineStatusBadge";
+import { validatePhotoFile, uploadPhotoToCloudinary, MAX_PHOTOS } from "@/lib/imageUpload";
 
 const STATUSES = ["Submitted", "Under Review", "In Progress", "Resolved"];
 
@@ -27,6 +28,7 @@ const EMPTY_COMPLAINT = {
   category: CATEGORIES[0],
   location: "",
   description: "",
+  photo_urls: [],
 };
 
 const StatusPill = ({ status }) => {
@@ -102,6 +104,56 @@ const ComplaintTracker = () => {
   const [submitted, setSubmitted] = useState(null);
   const [queued, setQueued] = useState(false);
 
+  // Transient upload UI state — kept separate from `form` (which is
+  // what gets persisted as an offline draft) since blob previews and
+  // in-flight upload status aren't meaningful to restore across a
+  // reload. `form.photo_urls` is the single source of truth for what
+  // actually gets submitted; this array just drives the thumbnail grid.
+  const [photoItems, setPhotoItems] = useState([]); // { id, previewUrl, status, url?, error? }
+  const uploading = photoItems.some((p) => p.status === "uploading");
+
+  const handlePhotoSelect = async (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = ""; // allow re-selecting the same file later
+    const remainingSlots = MAX_PHOTOS - photoItems.length;
+    if (remainingSlots <= 0) return;
+
+    for (const file of files.slice(0, remainingSlots)) {
+      const validationError = validatePhotoFile(file, lang);
+      const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const previewUrl = URL.createObjectURL(file);
+
+      if (validationError) {
+        setPhotoItems((prev) => [...prev, { id, previewUrl, status: "error", error: validationError }]);
+        continue;
+      }
+
+      setPhotoItems((prev) => [...prev, { id, previewUrl, status: "uploading" }]);
+      try {
+        const url = await uploadPhotoToCloudinary(file, lang);
+        setPhotoItems((prev) => prev.map((p) => (p.id === id ? { ...p, status: "done", url } : p)));
+        setForm((f) => ({ ...f, photo_urls: [...(f.photo_urls || []), url] }));
+      } catch (err) {
+        setPhotoItems((prev) =>
+          prev.map((p) => (p.id === id ? { ...p, status: "error", error: err.message } : p))
+        );
+      }
+    }
+  };
+
+  const removePhoto = (id) => {
+    setPhotoItems((prev) => {
+      const target = prev.find((p) => p.id === id);
+      if (target) {
+        URL.revokeObjectURL(target.previewUrl);
+        if (target.status === "done" && target.url) {
+          setForm((f) => ({ ...f, photo_urls: (f.photo_urls || []).filter((u) => u !== target.url) }));
+        }
+      }
+      return prev.filter((p) => p.id !== id);
+    });
+  };
+
   const { pendingCount, online, enqueue } = useOfflineQueue(
     "complaint_submit",
     (payload) => api.submitComplaint(payload),
@@ -120,6 +172,7 @@ const ComplaintTracker = () => {
 
   const submit = async (e) => {
     e.preventDefault();
+    if (uploading) return; // defense in depth — submit button is also disabled during upload
     setSubmitting(true);
     setSubmitted(null);
     setQueued(false);
@@ -129,6 +182,7 @@ const ComplaintTracker = () => {
       setSubmitted(res);
       clearDraft();
       setForm(EMPTY_COMPLAINT);
+      setPhotoItems([]);
     } catch (err) {
       if (isOfflineError(err)) {
         try {
@@ -136,6 +190,7 @@ const ComplaintTracker = () => {
           setQueued(true);
           clearDraft();
           setForm(EMPTY_COMPLAINT);
+          setPhotoItems([]);
         } catch {
           alert(
             lang === "hi"
@@ -317,15 +372,80 @@ const ComplaintTracker = () => {
               />
             </label>
 
+            <div>
+              <span className="text-xs font-semibold uppercase tracking-widest text-navy/60">
+                {lang === "hi" ? "फ़ोटो (वैकल्पिक)" : "Photos (optional)"}
+              </span>
+              <p className="mt-1 text-xs text-navy/40">
+                {lang === "hi"
+                  ? `अधिकतम ${MAX_PHOTOS} फ़ोटो, प्रत्येक 5MB तक — JPG, PNG या WEBP`
+                  : `Up to ${MAX_PHOTOS} photos, 5MB each — JPG, PNG, or WEBP`}
+              </p>
+
+              <div className="mt-2 grid grid-cols-3 sm:grid-cols-4 gap-2">
+                {photoItems.map((p) => (
+                  <div
+                    key={p.id}
+                    data-testid="photo-thumb"
+                    className="relative aspect-square rounded-xl overflow-hidden border border-navy/10 bg-linen"
+                  >
+                    <img
+                      src={p.previewUrl}
+                      alt={lang === "hi" ? "शिकायत फ़ोटो पूर्वावलोकन" : "Complaint photo preview"}
+                      className="h-full w-full object-cover"
+                    />
+                    {p.status === "uploading" && (
+                      <div className="absolute inset-0 bg-navy/50 flex items-center justify-center">
+                        <Loader2 size={18} className="animate-spin text-white" aria-hidden="true" />
+                      </div>
+                    )}
+                    {p.status === "error" && (
+                      <div className="absolute inset-0 bg-red-900/70 flex items-center justify-center p-1">
+                        <span className="text-[9px] text-white text-center leading-tight">{p.error}</span>
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => removePhoto(p.id)}
+                      aria-label={lang === "hi" ? "फ़ोटो हटाएं" : "Remove photo"}
+                      className="absolute top-1 right-1 h-5 w-5 rounded-full bg-navy/80 text-white flex items-center justify-center hover:bg-red-600 transition-colors"
+                    >
+                      <X size={12} aria-hidden="true" />
+                    </button>
+                  </div>
+                ))}
+
+                {photoItems.length < MAX_PHOTOS && (
+                  <label className="aspect-square rounded-xl border border-dashed border-navy/20 flex flex-col items-center justify-center gap-1 text-navy/40 hover:border-saffron hover:text-saffron cursor-pointer transition-colors">
+                    <ImagePlus size={18} aria-hidden="true" />
+                    <span className="text-[10px] font-semibold">
+                      {lang === "hi" ? "जोड़ें" : "Add"}
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      multiple
+                      capture="environment"
+                      data-testid="input-photos"
+                      onChange={handlePhotoSelect}
+                      className="hidden"
+                    />
+                  </label>
+                )}
+              </div>
+            </div>
+
             <button
               type="submit"
-              disabled={submitting}
+              disabled={submitting || uploading}
               aria-busy={submitting}
               data-testid="submit-complaint-btn"
               className="inline-flex items-center gap-2 rounded-full bg-navy px-6 py-3 text-sm font-semibold text-white hover:bg-saffron disabled:opacity-60 transition-colors"
             >
               {submitting ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <Sparkles size={16} aria-hidden="true" />}
-              {lang === "hi" ? "एआई से दर्ज करें" : "Submit with AI triage"}
+              {uploading
+                ? (lang === "hi" ? "फ़ोटो अपलोड हो रही है…" : "Uploading photos…")
+                : (lang === "hi" ? "एआई से दर्ज करें" : "Submit with AI triage")}
             </button>
             {showColdStart && (
               <p role="status" className="text-xs text-navy/40" data-testid="cold-start-notice">
@@ -367,6 +487,19 @@ const ComplaintTracker = () => {
                     </span>
                   </div>
                 </div>
+                {submitted.photo_urls?.length > 0 && (
+                  <div className="mt-4 flex gap-2">
+                    {submitted.photo_urls.map((url) => (
+                      <a key={url} href={url} target="_blank" rel="noopener noreferrer">
+                        <img
+                          src={url}
+                          alt={lang === "hi" ? "संलग्न फ़ोटो" : "Attached photo"}
+                          className="h-14 w-14 rounded-lg object-cover border border-white/20"
+                        />
+                      </a>
+                    ))}
+                  </div>
+                )}
                 <div className="mt-5 text-xs text-white/60">
                   {lang === "hi"
                     ? "इस टिकट आईडी को सुरक्षित रखें। ट्रैक टैब में उपयोग करें।"
@@ -455,6 +588,19 @@ const ComplaintTracker = () => {
                   <span className="font-semibold">{trackResult.category}</span> · {trackResult.location}
                 </div>
                 <div className="mt-1 text-sm text-navy/60">{trackResult.description}</div>
+                {trackResult.photo_urls?.length > 0 && (
+                  <div className="mt-3 flex gap-2 flex-wrap">
+                    {trackResult.photo_urls.map((url) => (
+                      <a key={url} href={url} target="_blank" rel="noopener noreferrer">
+                        <img
+                          src={url}
+                          alt={lang === "hi" ? "संलग्न फ़ोटो" : "Attached photo"}
+                          className="h-16 w-16 rounded-lg object-cover border border-navy/10"
+                        />
+                      </a>
+                    ))}
+                  </div>
+                )}
                 {trackResult.ai_summary && (
                   <div className="mt-4 rounded-xl bg-linen border border-navy/5 p-4 text-sm">
                     <div className="text-[10px] uppercase tracking-widest text-navy/50 mb-1">AI Triage</div>
