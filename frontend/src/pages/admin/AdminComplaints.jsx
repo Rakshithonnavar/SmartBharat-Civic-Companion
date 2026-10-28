@@ -12,6 +12,7 @@ import {
   User,
   Clock,
   CheckCircle2,
+  Camera,
 } from "lucide-react";
 import { adminApi } from "@/lib/adminApi";
 
@@ -198,6 +199,25 @@ const DetailModal = ({ ticketId, onClose, onUpdated }) => {
               <p className="mt-4 text-sm text-navy/80 leading-relaxed whitespace-pre-wrap">
                 {complaint.description}
               </p>
+
+              {complaint.photo_urls?.length > 0 && (
+                <div className="mt-4">
+                  <div className="text-[10px] font-bold uppercase tracking-widest text-navy/50 mb-2">
+                    Attached photos
+                  </div>
+                  <div className="flex gap-2 flex-wrap">
+                    {complaint.photo_urls.map((url) => (
+                      <a key={url} href={url} target="_blank" rel="noopener noreferrer">
+                        <img
+                          src={url}
+                          alt="Complaint evidence"
+                          className="h-20 w-20 rounded-lg object-cover border border-navy/10 hover:opacity-80 transition-opacity"
+                        />
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {complaint.ai_summary && (
                 <div className="mt-4 rounded-xl bg-aihighlight/10 border border-aihighlight/20 p-3">
@@ -444,6 +464,15 @@ const AdminComplaints = () => {
                       }`}
                     >
                       {c.ai_priority}
+                    </span>
+                  )}
+                  {c.photo_urls?.length > 0 && (
+                    <span
+                      title={`${c.photo_urls.length} photo${c.photo_urls.length > 1 ? "s" : ""} attached`}
+                      className="inline-flex items-center gap-1 rounded-full bg-navy/5 px-2 py-0.5 text-[9px] font-bold text-navy/50"
+                    >
+                      <Camera size={10} aria-hidden="true" />
+                      {c.photo_urls.length}
                     </span>
                   )}
                 </div>
