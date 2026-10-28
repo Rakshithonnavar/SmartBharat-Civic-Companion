@@ -16,7 +16,7 @@ import re
 import time
 import uuid
 from pathlib import Path
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 from typing import List, Optional, Literal
 from datetime import datetime, timezone
 
@@ -202,6 +202,19 @@ class ComplaintCreate(BaseModel):
     location: str
     description: str
     language: Optional[str] = "en"  # used only to pick the confirmation-email template
+    photo_urls: List[str] = Field(default_factory=list)
+
+    @field_validator("photo_urls")
+    @classmethod
+    def _validate_photo_urls(cls, v):
+        # Defense in depth: the client already caps this at 3 and only
+        # ever sends back URLs Cloudinary itself returned, but never
+        # trust a client-supplied array blindly. Anything malformed is
+        # dropped rather than rejecting the whole complaint over it.
+        if not v:
+            return []
+        cleaned = [u for u in v if isinstance(u, str) and u.startswith("https://")]
+        return cleaned[:3]
 
 
 class ComplaintStatusEntry(BaseModel):
@@ -220,6 +233,7 @@ class Complaint(BaseModel):
     category: str
     location: str
     description: str
+    photo_urls: List[str] = Field(default_factory=list)
     ai_summary: Optional[str] = None
     ai_priority: Optional[str] = None  # "low" | "medium" | "high"
     ai_department: Optional[str] = None
@@ -533,6 +547,7 @@ JSON only."""
         category=req.category,
         location=req.location,
         description=req.description,
+        photo_urls=req.photo_urls,
         ai_summary=ai_summary,
         ai_priority=ai_priority,
         ai_department=ai_department,
